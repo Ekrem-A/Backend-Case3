@@ -65,7 +65,7 @@ public class AuthService : IAuthService
         }
 
         // Generate tokens
-        var accessToken = GenerateAccessToken(user);
+        var accessToken = await GenerateAccessTokenAsync(user);
         var refreshToken = await GenerateRefreshTokenAsync(user);
 
         return new AuthResponse
@@ -123,7 +123,7 @@ public class AuthService : IAuthService
         await _userManager.UpdateAsync(user);
 
         // Generate tokens
-        var accessToken = GenerateAccessToken(user);
+        var accessToken = await GenerateAccessTokenAsync(user);
         var refreshToken = await GenerateRefreshTokenAsync(user);
 
         return new AuthResponse
@@ -183,7 +183,7 @@ public class AuthService : IAuthService
         storedToken.ReasonRevoked = "Replaced by new token";
 
         // Generate new tokens
-        var newAccessToken = GenerateAccessToken(user);
+        var newAccessToken = await GenerateAccessTokenAsync(user);
         var newRefreshToken = await GenerateRefreshTokenAsync(user);
 
         // Update replaced by token
@@ -241,12 +241,12 @@ public class AuthService : IAuthService
         };
     }
 
-    private string GenerateAccessToken(ApplicationUser user)
+    private async Task<string> GenerateAccessTokenAsync(ApplicationUser user)
     {
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id),
             new Claim(JwtRegisteredClaimNames.Email, user.Email!),
@@ -255,6 +255,13 @@ public class AuthService : IAuthService
             new Claim("firstName", user.FirstName),
             new Claim("lastName", user.LastName)
         };
+
+        // Add user roles to claims
+        var roles = await _userManager.GetRolesAsync(user);
+        foreach (var role in roles)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
+        }
 
         var token = new JwtSecurityToken(
             issuer: _jwtSettings.Issuer,

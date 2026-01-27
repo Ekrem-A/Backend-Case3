@@ -42,3 +42,60 @@ Authorization: Bearer {{token}}
 {
   "refreshToken": "your-refresh-token-here"
 }
+
+###################################
+# ADMIN ENDPOINTS (Admin rolü gerekli)
+###################################
+
+### Admin Login
+# Email: admin@example.com
+# Password: Admin123!
+POST {{Gateway.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "Admin123!"
+}
+
+### Get All Users (Admin only)
+GET {{Gateway.Api_HostAddress}}/api/admin/users
+Authorization: Bearer {{adminToken}}
+
+### Get User by ID (Admin only)
+GET {{Gateway.Api_HostAddress}}/api/admin/users/{{userId}}
+Authorization: Bearer {{adminToken}}
+
+### Get All Roles (Admin only)
+GET {{Gateway.Api_HostAddress}}/api/admin/roles
+Authorization: Bearer {{adminToken}}
+
+### Create New Role (Admin only)
+POST {{Gateway.Api_HostAddress}}/api/admin/roles
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "roleName": "Editor"
+}
+
+### Assign Role to User (Admin only)
+POST {{Gateway.Api_HostAddress}}/api/admin/users/{{userId}}/roles/User
+Authorization: Bearer {{adminToken}}
+
+### Remove Role from User (Admin only)
+DELETE {{Gateway.Api_HostAddress}}/api/admin/users/{{userId}}/roles/User
+Authorization: Bearer {{adminToken}}
+
+### Toggle User Status (Admin only)
+PATCH {{Gateway.Api_HostAddress}}/api/admin/users/{{userId}}/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "isActive": false
+}
+
+### Delete Role (Admin only)
+DELETE {{Gateway.Api_HostAddress}}/api/admin/roles/Editor
+Authorization: Bearer {{adminToken}}
