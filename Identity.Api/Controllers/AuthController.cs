@@ -18,9 +18,9 @@ public class AuthController : ControllerBase
         _authService = authService;
     }
 
-    /// <summary>
+    
     /// Register a new user
-    /// </summary>
+  
     [HttpPost("register")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status400BadRequest)]
@@ -45,9 +45,9 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
+    
     /// Login with email and password
-    /// </summary>
+  
     [HttpPost("login")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status401Unauthorized)]
@@ -72,9 +72,9 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
+    
     /// Refresh access token using refresh token
-    /// </summary>
+  
     [HttpPost("refresh-token")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status401Unauthorized)]
@@ -99,9 +99,9 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
+    
     /// Revoke a refresh token (logout)
-    /// </summary>
+  
     [HttpPost("revoke-token")]
     [Authorize]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
@@ -127,9 +127,9 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
+    
     /// Get current user info (requires authentication)
-    /// </summary>
+  
     [HttpGet("me")]
     [Authorize]
     [ProducesResponseType(typeof(UserInfo), StatusCodes.Status200OK)]
