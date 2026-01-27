@@ -2,6 +2,8 @@
 
 JWT tabanlı kimlik doğrulama ve yetkilendirme sistemi ile mikroservis mimarisi kullanan .NET 8 projesi.
 
+**🎯 12-Factor App Prensiplerine Uygun Geliştirmeler yapılıyor.
+
 ## 🏗️ Mimari Yapı
 
 ```
@@ -30,6 +32,23 @@ JWT tabanlı kimlik doğrulama ve yetkilendirme sistemi ile mikroservis mimarisi
 └───────────────────────┘       └───────────────────────┘
 ```
 
+## 📋 12-Factor App Uyumluluğu
+
+| Faktör | Uygulama | Detay |
+|--------|----------|-------|
+| **1. Kod Tabanı** | ✅ Git | Merkezi kod deposu, `.gitignore` yapılandırılmış |
+| **2. Bağımlılıklar** | ✅ NuGet | Tüm bağımlılıklar `.csproj` dosyalarında tanımlı |
+| **3. Konfigürasyon** | ✅ Environment Variables | `appsettings.json` + ortam değişkenleri |
+| **4. Destek Servisleri** | ✅ Ayrılmış | SQL Server, mikroservisler bağımsız |
+| **5. Build/Run Ayrımı** | ✅ Docker | Multi-stage build, ayrı derleme ve çalışma |
+| **6. Stateless** | ✅ JWT | Token tabanlı, session yok |
+| **7. Port Bağımsızlığı** | ✅ Konfigüre edilebilir | Environment ile port belirlenir |
+| **8. Concurrency** | ✅ Async/Await | Yatay ölçeklenebilir tasarım |
+| **9. Disposability** | ✅ Graceful Shutdown | Kaynaklar düzgün serbest bırakılır |
+| **10. Dev/Prod Paritesi** | ✅ Docker Compose | Aynı yapılandırma, farklı env |
+| **11. Loglar** | ✅ Serilog | Yapılandırılmış loglar, stdout |
+| **12. Admin Prosesleri** | ✅ Health Checks | `/health`, `/health/live`, `/health/ready` |
+
 ## 🛠️ Teknolojiler
 
 | Teknoloji | Versiyon | Açıklama |
@@ -40,6 +59,8 @@ JWT tabanlı kimlik doğrulama ve yetkilendirme sistemi ile mikroservis mimarisi
 | SQL Server LocalDB | - | Veritabanı |
 | Microsoft Identity | 8.0 | Kimlik Yönetimi |
 | JWT Bearer | 8.0 | Token Tabanlı Kimlik Doğrulama |
+| Serilog | 8.0 | Yapılandırılmış Loglama |
+| Docker | - | Konteynerizasyon |
 | Swagger/OpenAPI | 6.6 | API Dokümantasyonu |
 
 ## 📁 Proje Yapısı
@@ -47,14 +68,16 @@ JWT tabanlı kimlik doğrulama ve yetkilendirme sistemi ile mikroservis mimarisi
 ```
 Backend-Case3/
 ├── Gateway.Api/                 # API Gateway (YARP)
-│   ├── Program.cs
-│   └── appsettings.json         # YARP route yapılandırması
+│   ├── Program.cs              # Serilog, Health Checks
+│   ├── Dockerfile              # Docker build
+│   └── appsettings.json        # YARP route yapılandırması
 │
 ├── Identity.Api/                # Kimlik Doğrulama API
 │   ├── Controllers/
-│   │   ├── AuthController.cs    # Login, Register, Token işlemleri
-│   │   └── AdminController.cs   # Admin yönetim işlemleri
-│   └── Program.cs
+│   │   ├── AuthController.cs   # Login, Register, Token işlemleri
+│   │   └── AdminController.cs  # Admin yönetim işlemleri
+│   ├── Program.cs              # Serilog, Health Checks, Graceful Shutdown
+│   └── Dockerfile              # Docker build
 │
 ├── Identity.Application/        # İş mantığı katmanı
 │   ├── Models/
@@ -72,12 +95,12 @@ Backend-Case3/
 ├── Identity.Infrastructure/     # Altyapı katmanı
 │   └── Data/
 │       ├── ApplicationDbContext.cs
-│       └── DbInitializer.cs     # Seed Data (Admin, Roller)
+│       └── DbInitializer.cs    # Seed Data (Admin, Roller)
 │
-├── Products.Api/                # Ürün API (Örnek mikroservis)
-├── Products.Application/
-├── Products.Domain/
-└── Products.Infrastructure/
+├── docker-compose.yml          # Docker Compose
+├── docker-compose.override.yml # Development override
+├── .gitignore                  # Git ignore
+└── README.md
 ```
 
 ## 🚀 Kurulum
@@ -85,35 +108,45 @@ Backend-Case3/
 ### Gereksinimler
 - .NET 8 SDK
 - SQL Server LocalDB (Visual Studio ile birlikte gelir)
+- Docker Desktop (opsiyonel)
 - Visual Studio 2022 veya VS Code
 
-### Adım 1: Projeyi Klonlayın
+### Seçenek 1: Yerel Geliştirme
+
 ```bash
+# Projeyi klonla
 git clone <repo-url>
 cd Backend-Case3
-```
 
-### Adım 2: Veritabanını Oluşturun
-```bash
 # Migration oluştur
 dotnet ef migrations add InitialCreate --project Identity.Infrastructure --startup-project Identity.Api --output-dir Migrations
 
 # Veritabanını güncelle
 dotnet ef database update --project Identity.Infrastructure --startup-project Identity.Api
-```
 
-### Adım 3: Projeyi Çalıştırın
-
-**Terminal ile:**
-```bash
-# Identity.Api'yi başlat
+# Servisleri başlat (ayrı terminallerde)
 dotnet run --project Identity.Api
-
-# Yeni terminal - Gateway.Api'yi başlat
 dotnet run --project Gateway.Api
 ```
 
-**Visual Studio ile:**
+### Seçenek 2: Docker ile Çalıştırma
+
+```bash
+# Environment değişkenlerini ayarla
+copy env.example.txt .env
+# .env dosyasını düzenleyin
+
+# Docker Compose ile başlat
+docker-compose up -d
+
+# Logları izle
+docker-compose logs -f
+
+# Durdur
+docker-compose down
+```
+
+### Visual Studio ile Çalıştırma
 1. Solution'a sağ tıklayın → "Configure Startup Projects..."
 2. "Multiple startup projects" seçin
 3. `Gateway.Api` ve `Identity.Api` için "Start" seçin
@@ -136,6 +169,13 @@ Uygulama ilk çalıştırıldığında otomatik olarak oluşturulur:
 |--------|-----|
 | API Gateway | `http://localhost:5100` |
 | Identity API (Swagger) | `http://localhost:5101/swagger` |
+
+### Health Check Endpoint'leri
+| Endpoint | Açıklama |
+|----------|----------|
+| `/health` | Tüm sağlık kontrolleri (JSON) |
+| `/health/live` | Liveness probe (uygulama çalışıyor mu?) |
+| `/health/ready` | Readiness probe (bağımlılıklar hazır mı?) |
 
 ### Auth Endpoint'leri (Herkese Açık)
 
@@ -203,71 +243,61 @@ Content-Type: application/json
 }
 ```
 
-### 3. Korumalı Endpoint'e Erişim
+### 3. Health Check
 ```http
-GET http://localhost:5100/api/admin/users
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+GET http://localhost:5100/health
 ```
 
-### 4. Token Yenileme
-```http
-POST http://localhost:5100/api/auth/refresh-token
-Content-Type: application/json
-
+**Yanıt:**
+```json
 {
-  "refreshToken": "abc123..."
+  "status": "Healthy",
+  "gateway": "YARP API Gateway",
+  "checks": [
+    { "name": "self", "status": "Healthy", "duration": 0.5 },
+    { "name": "identity-api", "status": "Healthy", "duration": 15.2 }
+  ],
+  "totalDuration": 15.8
 }
 ```
 
-## ⚙️ Yapılandırma
+## ⚙️ Konfigürasyon (12-Factor: Config)
 
-### JWT Ayarları (`appsettings.json`)
+### Environment Variables
+```bash
+# JWT Ayarları
+JWT_SECRET_KEY=your-super-secret-key-min-32-characters
+JWT_ISSUER=IdentityApi
+JWT_AUDIENCE=BackendServices
+
+# Veritabanı
+DATABASE_CONNECTION_STRING=Server=...;Database=IdentityDb;...
+
+# Ortam
+ASPNETCORE_ENVIRONMENT=Production
+```
+
+### appsettings.json Yapısı
 ```json
 {
   "JwtSettings": {
-    "SecretKey": "your-secret-key-min-32-characters",
-    "Issuer": "IdentityApi",
-    "Audience": "BackendServices",
+    "SecretKey": "${JWT_SECRET_KEY}",
+    "Issuer": "${JWT_ISSUER}",
+    "Audience": "${JWT_AUDIENCE}",
     "AccessTokenExpirationMinutes": 15,
     "RefreshTokenExpirationDays": 7
-  }
-}
-```
-
-### Veritabanı Bağlantısı
-```json
-{
+  },
   "ConnectionStrings": {
-    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=IdentityDb;Trusted_Connection=True;"
+    "DefaultConnection": "${DATABASE_CONNECTION_STRING}"
   }
 }
 ```
 
-### YARP Route Yapılandırması (`Gateway.Api/appsettings.json`)
-```json
-{
-  "ReverseProxy": {
-    "Routes": {
-      "identity-route": {
-        "ClusterId": "identity-cluster",
-        "Match": { "Path": "/api/auth/{**catch-all}" }
-      },
-      "admin-route": {
-        "ClusterId": "identity-cluster",
-        "AuthorizationPolicy": "admin",
-        "Match": { "Path": "/api/admin/{**catch-all}" }
-      }
-    },
-    "Clusters": {
-      "identity-cluster": {
-        "Destinations": {
-          "identity-api": { "Address": "http://localhost:5101" }
-        }
-      }
-    }
-  }
-}
-```
+### Ortam Bazlı Yapılandırma
+- `appsettings.json` - Temel yapılandırma (placeholder'lar)
+- `appsettings.Development.json` - Development değerleri
+- `appsettings.Production.json` - Production değerleri
+- Environment Variables - Hassas veriler (secrets)
 
 ## 🔒 Güvenlik Özellikleri
 
@@ -278,6 +308,7 @@ Content-Type: application/json
 - ✅ Token Expiration & Revocation
 - ✅ CORS Politikası
 - ✅ API Gateway ile Merkezi Kimlik Doğrulama
+- ✅ Non-root Docker kullanıcısı
 
 ## 📊 Roller
 
@@ -286,6 +317,24 @@ Content-Type: application/json
 | **Admin** | Tam yetki - Kullanıcı ve rol yönetimi |
 | **Manager** | Yönetici işlemleri |
 | **User** | Standart kullanıcı işlemleri |
+
+## 📋 Loglama (12-Factor: Logs)
+
+Proje Serilog kullanarak yapılandırılmış loglama sağlar:
+
+```
+[14:32:15 INF] [Identity.Api] Starting Identity.Api service...
+[14:32:16 INF] [Identity.Api] Database seeding completed successfully
+[14:32:16 INF] [Identity.Api] Identity.Api started successfully
+[14:32:20 INF] [Identity.Api] HTTP POST /api/Auth/login responded 200 in 125.4532 ms
+```
+
+**Özellikler:**
+- Yapılandırılmış JSON formatı
+- Service name ile etiketleme
+- Environment ve machine name enrichment
+- HTTP request logging
+- Console output (stdout - 12 Factor uyumlu)
 
 ## 🧪 Test
 
@@ -297,11 +346,48 @@ Visual Studio veya VS Code REST Client ile:
 - `Gateway.Api/Gateway.Api.http`
 - `Identity.Api/Identity.Api.http`
 
+### Health Checks
+```bash
+# Gateway health
+curl http://localhost:5100/health
+
+# Identity API health
+curl http://localhost:5101/health
+
+# Liveness probe
+curl http://localhost:5100/health/live
+
+# Readiness probe
+curl http://localhost:5100/health/ready
+```
+
+## 🐳 Docker Komutları
+
+```bash
+# Build
+docker-compose build
+
+# Başlat
+docker-compose up -d
+
+# Logları izle
+docker-compose logs -f gateway-api
+docker-compose logs -f identity-api
+
+# Durdur ve temizle
+docker-compose down -v
+
+# Sadece belirli servisi yeniden başlat
+docker-compose restart identity-api
+```
+
 ## 📄 Lisans
 
 Bu proje eğitim amaçlı geliştirilmiştir.
 
 ---
 
+
 **Geliştirici:** Ekrem-A
+
 
