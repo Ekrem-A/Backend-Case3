@@ -1,6 +1,44 @@
-@Gateway.Api_HostAddress = http://localhost:5166
+@Gateway.Api_HostAddress = http://localhost:5100
 
-GET {{Gateway.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Register - Yeni kullanıcı kaydı
+POST {{Gateway.Api_HostAddress}}/api/auth/register
+Content-Type: application/json
 
-###
+{
+  "email": "user@example.com",
+  "password": "Test123!",
+  "confirmPassword": "Test123!",
+  "firstName": "John",
+  "lastName": "Doe"
+}
+
+### Login - Kullanıcı girişi
+POST {{Gateway.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "Test123!"
+}
+
+### Get Current User - Mevcut kullanıcı bilgisi (JWT gerekli)
+# @name login
+GET {{Gateway.Api_HostAddress}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### Refresh Token - Access token yenileme
+POST {{Gateway.Api_HostAddress}}/api/auth/refresh-token
+Content-Type: application/json
+
+{
+  "refreshToken": "your-refresh-token-here"
+}
+
+### Revoke Token - Logout (JWT gerekli)
+POST {{Gateway.Api_HostAddress}}/api/auth/revoke-token
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "refreshToken": "your-refresh-token-here"
+}

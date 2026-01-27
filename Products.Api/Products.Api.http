@@ -1,6 +1,6 @@
-@Products.Api_HostAddress = http://localhost:5063
+@Products.Api_HostAddress = http://localhost:5102
 
-GET {{Products.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Products API - Örnek endpoint'ler buraya eklenecek
+# Products mikroservisi için endpoint'ler henüz tanımlanmadı
 
 ###

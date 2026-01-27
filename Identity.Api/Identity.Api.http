@@ -1,6 +1,43 @@
-@Identity.Api_HostAddress = http://localhost:5118
+@Identity.Api_HostAddress = http://localhost:5101
 
-GET {{Identity.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Register - Yeni kullanıcı kaydı
+POST {{Identity.Api_HostAddress}}/api/Auth/register
+Content-Type: application/json
 
-###
+{
+  "email": "user@example.com",
+  "password": "Test123!",
+  "confirmPassword": "Test123!",
+  "firstName": "John",
+  "lastName": "Doe"
+}
+
+### Login - Kullanıcı girişi
+POST {{Identity.Api_HostAddress}}/api/Auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "Test123!"
+}
+
+### Get Current User - Mevcut kullanıcı bilgisi (JWT gerekli)
+GET {{Identity.Api_HostAddress}}/api/Auth/me
+Authorization: Bearer {{token}}
+
+### Refresh Token - Access token yenileme
+POST {{Identity.Api_HostAddress}}/api/Auth/refresh-token
+Content-Type: application/json
+
+{
+  "refreshToken": "your-refresh-token-here"
+}
+
+### Revoke Token - Logout (JWT gerekli)
+POST {{Identity.Api_HostAddress}}/api/Auth/revoke-token
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "refreshToken": "your-refresh-token-here"
+}
