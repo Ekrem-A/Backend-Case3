@@ -387,4 +387,7 @@ Bu proje eğitim amaçlı geliştirilmiştir.
 
 ---
 
-**Geliştirici:** Backend Services Case Study
+
+**Geliştirici:** Ekrem-A
+
+
