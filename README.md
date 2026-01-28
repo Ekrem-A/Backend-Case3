@@ -76,55 +76,102 @@ JWT tabanlı kimlik doğrulama/yetkilendirme sistemi ve CQRS pattern ile ürün 
 
 ```
 Backend-Case3/
-├── Gateway.Api/                 # API Gateway (YARP)
-│   ├── Program.cs              # Serilog, Health Checks
-│   ├── Dockerfile              # Docker build
-│   └── appsettings.json        # YARP route yapılandırması
 │
-├── Identity.Api/                # Kimlik Doğrulama API
-│   ├── Controllers/
-│   │   ├── AuthController.cs   # Login, Register, Token
-│   │   └── AdminController.cs  # Admin yönetim
-│   └── Dockerfile
+├── gateway/                              # API Gateway
+│   └── Gateway.Api/
+│       ├── Program.cs                    # YARP, JWT, Serilog, Health Checks
+│       ├── appsettings.json              # Route yapılandırması
+│       ├── appsettings.Development.json
+│       ├── Dockerfile
+│       └── Gateway.Api.http              # HTTP test dosyası
 │
-├── Identity.Application/        # İş mantığı katmanı
-├── Identity.Domain/             # Domain katmanı
-├── Identity.Infrastructure/     # Altyapı katmanı
+├── services/                             # Mikroservisler
+│   │
+│   ├── Identity/                         # 🔐 Identity Mikroservisi (Onion Architecture)
+│   │   │
+│   │   ├── Identity.Api/                 # Sunum Katmanı
+│   │   │   ├── Controllers/
+│   │   │   │   ├── AuthController.cs     # Login, Register, Token
+│   │   │   │   └── AdminController.cs    # Kullanıcı/Rol yönetimi
+│   │   │   ├── Program.cs
+│   │   │   ├── appsettings.json
+│   │   │   ├── Dockerfile
+│   │   │   └── Identity.Api.http
+│   │   │
+│   │   ├── Identity.Application/         # İş Mantığı Katmanı
+│   │   │   ├── Models/
+│   │   │   │   ├── DTOs/
+│   │   │   │   └── JwtSettings.cs
+│   │   │   └── Services/
+│   │   │       ├── IAuthService.cs
+│   │   │       └── AuthService.cs
+│   │   │
+│   │   ├── Identity.Domain/              # Domain Katmanı
+│   │   │   └── Entities/
+│   │   │       ├── ApplicationUser.cs
+│   │   │       └── RefreshToken.cs
+│   │   │
+│   │   └── Identity.Infrastructure/      # Altyapı Katmanı
+│   │       ├── Data/
+│   │       │   ├── ApplicationDbContext.cs
+│   │       │   └── DbInitializer.cs      # Seed (Admin, Roller)
+│   │       └── Migrations/
+│   │
+│   └── Products/                         # 📦 Products Mikroservisi (Onion + CQRS)
+│       │
+│       ├── Products.Api/                 # Sunum Katmanı
+│       │   ├── Controllers/
+│       │   │   ├── ProductsController.cs
+│       │   │   └── CategoriesController.cs
+│       │   ├── Program.cs
+│       │   ├── appsettings.json
+│       │   ├── Dockerfile
+│       │   └── Products.Api.http
+│       │
+│       ├── Products.Application/         # İş Mantığı Katmanı (CQRS)
+│       │   ├── Commands/                 # CreateProduct, UpdateProduct, DeleteProduct, UpdateStock
+│       │   ├── Queries/                  # GetAllProducts, GetProductById, SearchProducts
+│       │   ├── Handlers/                 # Command & Query Handlers
+│       │   ├── Validators/               # FluentValidation
+│       │   ├── Behaviors/                # MediatR Pipeline (Validation)
+│       │   └── DTOs/
+│       │
+│       ├── Products.Domain/              # Domain Katmanı
+│       │   ├── Common/
+│       │   │   ├── BaseEntity.cs
+│       │   │   └── IDomainEvent.cs
+│       │   ├── Entities/
+│       │   │   ├── Product.cs
+│       │   │   └── Category.cs
+│       │   ├── Events/
+│       │   │   ├── ProductCreatedEvent.cs
+│       │   │   ├── ProductUpdatedEvent.cs
+│       │   │   ├── ProductStockChangedEvent.cs
+│       │   │   └── ProductDeletedEvent.cs
+│       │   └── Interfaces/
+│       │       ├── IRepository.cs
+│       │       ├── IProductRepository.cs
+│       │       ├── ICategoryRepository.cs
+│       │       └── IEventPublisher.cs
+│       │
+│       └── Products.Infrastructure/      # Altyapı Katmanı
+│           ├── Data/
+│           │   ├── ProductsDbContext.cs
+│           │   ├── DbInitializer.cs      # Seed (Kategoriler, Ürünler)
+│           │   ├── Configurations/       # EF Core Configurations
+│           │   └── Migrations/
+│           ├── Repositories/
+│           │   ├── Repository.cs
+│           │   ├── ProductRepository.cs
+│           │   └── CategoryRepository.cs
+│           └── Messaging/
+│               ├── KafkaSettings.cs
+│               ├── KafkaEventPublisher.cs
+│               └── NullEventPublisher.cs
 │
-├── Products.Api/                # Ürün Yönetimi API (CQRS)
-│   ├── Controllers/
-│   │   ├── ProductsController.cs
-│   │   └── CategoriesController.cs
-│   └── Dockerfile
-│
-├── Products.Application/        # CQRS - Commands & Queries
-│   ├── Commands/               # CreateProductCommand, etc.
-│   ├── Queries/                # GetAllProductsQuery, etc.
-│   ├── Handlers/               # Command & Query Handlers
-│   ├── Validators/             # FluentValidation
-│   └── DTOs/
-│
-├── Products.Domain/             # Domain Entities & Events
-│   ├── Entities/
-│   │   ├── Product.cs
-│   │   └── Category.cs
-│   ├── Events/
-│   │   ├── ProductCreatedEvent.cs
-│   │   ├── ProductUpdatedEvent.cs
-│   │   └── ProductStockChangedEvent.cs
-│   └── Interfaces/
-│       ├── IProductRepository.cs
-│       └── ICategoryRepository.cs
-│
-├── Products.Infrastructure/     # Data & Messaging
-│   ├── Data/
-│   │   ├── ProductsDbContext.cs
-│   │   └── DbInitializer.cs    # Seed Data
-│   ├── Repositories/
-│   └── Messaging/
-│       └── KafkaEventPublisher.cs
-│
-├── docker-compose.yml          # Docker Compose (SQL, Kafka, Services)
+├── docker-compose.yml                    # Docker Compose (SQL, Kafka, Services)
+├── docker-compose.override.yml           # Development overrides
+├── Backend-Case3.sln                     # Solution dosyası
 └── README.md
 ```
 
@@ -161,14 +208,14 @@ docker-compose down
 # SQL Server ve Kafka'yı Docker'da başlat
 docker-compose up -d sqlserver kafka zookeeper
 
-# Migration oluştur
-dotnet ef migrations add InitialCreate --project Identity.Infrastructure --startup-project Identity.Api
-dotnet ef migrations add InitialCreate --project Products.Infrastructure --startup-project Products.Api
+# Migration oluştur (services klasörü içinden)
+dotnet ef migrations add InitialCreate --project services/Identity/Identity.Infrastructure --startup-project services/Identity/Identity.Api
+dotnet ef migrations add InitialCreate --project services/Products/Products.Infrastructure --startup-project services/Products/Products.Api
 
 # Servisleri başlat (ayrı terminallerde)
-dotnet run --project Identity.Api
-dotnet run --project Products.Api
-dotnet run --project Gateway.Api
+dotnet run --project services/Identity/Identity.Api
+dotnet run --project services/Products/Products.Api
+dotnet run --project gateway/Gateway.Api
 ```
 
 ### Visual Studio ile Çalıştırma
