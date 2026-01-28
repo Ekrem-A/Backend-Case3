@@ -4,16 +4,16 @@ WORKDIR /src
 
 # Copy solution and project files
 COPY Backend-Case3.sln .
-COPY Gateway.Api/Gateway.Api.csproj Gateway.Api/
+COPY gateway/Gateway.Api/Gateway.Api.csproj gateway/Gateway.Api/
 
-# Restore dependencies ( Bağımlılıklar)
-RUN dotnet restore Gateway.Api/Gateway.Api.csproj
+# Restore dependencies (Bağımlılıklar)
+RUN dotnet restore gateway/Gateway.Api/Gateway.Api.csproj
 
 # Copy source code
-COPY Gateway.Api/ Gateway.Api/
+COPY gateway/Gateway.Api/ gateway/Gateway.Api/
 
 # Build
-WORKDIR /src/Gateway.Api
+WORKDIR /src/gateway/Gateway.Api
 RUN dotnet build -c Release -o /app/build
 
 # Publish stage

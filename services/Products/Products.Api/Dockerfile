@@ -4,20 +4,20 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy csproj files and restore dependencies
-COPY ["Products.Api/Products.Api.csproj", "Products.Api/"]
-COPY ["Products.Application/Products.Application.csproj", "Products.Application/"]
-COPY ["Products.Domain/Products.Domain.csproj", "Products.Domain/"]
-COPY ["Products.Infrastructure/Products.Infrastructure.csproj", "Products.Infrastructure/"]
+COPY ["services/Products/Products.Api/Products.Api.csproj", "services/Products/Products.Api/"]
+COPY ["services/Products/Products.Application/Products.Application.csproj", "services/Products/Products.Application/"]
+COPY ["services/Products/Products.Domain/Products.Domain.csproj", "services/Products/Products.Domain/"]
+COPY ["services/Products/Products.Infrastructure/Products.Infrastructure.csproj", "services/Products/Products.Infrastructure/"]
 
-RUN dotnet restore "Products.Api/Products.Api.csproj"
+RUN dotnet restore "services/Products/Products.Api/Products.Api.csproj"
 
 # Copy source code and build
-COPY Products.Api/ Products.Api/
-COPY Products.Application/ Products.Application/
-COPY Products.Domain/ Products.Domain/
-COPY Products.Infrastructure/ Products.Infrastructure/
+COPY services/Products/Products.Api/ services/Products/Products.Api/
+COPY services/Products/Products.Application/ services/Products/Products.Application/
+COPY services/Products/Products.Domain/ services/Products/Products.Domain/
+COPY services/Products/Products.Infrastructure/ services/Products/Products.Infrastructure/
 
-WORKDIR /src/Products.Api
+WORKDIR /src/services/Products/Products.Api
 RUN dotnet build -c Release -o /app/build
 
 # Publish stage
