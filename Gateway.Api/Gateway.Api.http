@@ -17,14 +17,14 @@ POST {{Gateway.Api_HostAddress}}/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "user@example.com",
-  "password": "Test123!"
+  "email": "admin@example.com",
+  "password": "Admin123!"
 }
 
 ### Get Current User - Mevcut kullanıcı bilgisi (JWT gerekli)
 # @name login
 GET {{Gateway.Api_HostAddress}}/api/auth/me
-Authorization: Bearer {{token}}
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiYTA4ZGViYS0yZDZiLTRmZjQtOThkMi1kMGU1MjgyN2FmNGUiLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwianRpIjoiZGMzOWY0M2EtYTk4Ny00OTkxLTkxOGQtNDQ5ZTEyN2Q2NzEwIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvbmFtZWlkZW50aWZpZXIiOiJiYTA4ZGViYS0yZDZiLTRmZjQtOThkMi1kMGU1MjgyN2FmNGUiLCJmaXJzdE5hbWUiOiJTeXN0ZW0iLCJsYXN0TmFtZSI6IkFkbWluIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiQWRtaW4iLCJleHAiOjE3Njk2MTk0NjksImlzcyI6IklkZW50aXR5QXBpIiwiYXVkIjoiQmFja2VuZFNlcnZpY2VzIn0.00IFVsQPKhaV3jbj1gHt_S_Kufn0NDLCzLco6HxVhJA
 
 ### Refresh Token - Access token yenileme
 POST {{Gateway.Api_HostAddress}}/api/auth/refresh-token
@@ -99,3 +99,84 @@ Authorization: Bearer {{adminToken}}
 ### Delete Role (Admin only)
 DELETE {{Gateway.Api_HostAddress}}/api/admin/roles/Editor
 Authorization: Bearer {{adminToken}}
+
+###################################
+# PRODUCTS ENDPOINTS (Herkes okuyabilir, Admin yazabilir)
+###################################
+
+### Get All Products (Public)
+GET {{Gateway.Api_HostAddress}}/api/products?pageNumber=1&pageSize=10
+Accept: application/json
+
+### Search Products (Public)
+GET {{Gateway.Api_HostAddress}}/api/products/search?q=intel
+Accept: application/json
+
+### Get Product By ID (Public)
+GET {{Gateway.Api_HostAddress}}/api/products/{{productId}}
+Accept: application/json
+
+### Create Product (Admin only)
+POST {{Gateway.Api_HostAddress}}/api/products
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiYTA4ZGViYS0yZDZiLTRmZjQtOThkMi1kMGU1MjgyN2FmNGUiLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwianRpIjoiMmNmN2RkZDEtNzVmMi00NTJjLWE3MzQtOGYzNjBmNjEzZDBiIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvbmFtZWlkZW50aWZpZXIiOiJiYTA4ZGViYS0yZDZiLTRmZjQtOThkMi1kMGU1MjgyN2FmNGUiLCJmaXJzdE5hbWUiOiJTeXN0ZW0iLCJsYXN0TmFtZSI6IkFkbWluIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiQWRtaW4iLCJleHAiOjE3Njk2MjEyMTUsImlzcyI6IklkZW50aXR5QXBpIiwiYXVkIjoiQmFja2VuZFNlcnZpY2VzIn0.9NTRhvzRLEzmSXANhM_E9OBVK2_RRKO9fkXbT96oZDw
+
+{
+  "name": "Intel Core i7-14700K",
+  "description": "20 çekirdekli (8P+12E), 28 thread",
+  "sku": "CPU-INT-I7-14700K",
+  "brand": "Intel",
+  "model": "i7-14700K",
+  "price": 18999.99,
+  "stock": 20,
+  "imageUrl": null,
+  "specifications": "{\"cores\": 20, \"threads\": 28}",
+  "categoryId": "9b52de26-bba7-419f-be66-023201b678de"
+}
+
+### Update Stock (Admin only)
+PATCH {{Gateway.Api_HostAddress}}/api/products/{{productId}}/stock
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "quantity": -5
+}
+
+### Delete Product (Admin only)
+DELETE {{Gateway.Api_HostAddress}}/api/products/{{productId}}
+Authorization: Bearer {{adminToken}}
+
+###################################
+# CATEGORIES ENDPOINTS
+###################################
+
+### Get All Categories (Public)
+GET {{Gateway.Api_HostAddress}}/api/categories
+Accept: application/json
+
+### Get Category Tree (Public)
+GET {{Gateway.Api_HostAddress}}/api/categories/tree
+Accept: application/json
+
+### Create Category (Admin only)
+POST {{Gateway.Api_HostAddress}}/api/categories
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiYTA4ZGViYS0yZDZiLTRmZjQtOThkMi1kMGU1MjgyN2FmNGUiLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwianRpIjoiMmNmN2RkZDEtNzVmMi00NTJjLWE3MzQtOGYzNjBmNjEzZDBiIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvbmFtZWlkZW50aWZpZXIiOiJiYTA4ZGViYS0yZDZiLTRmZjQtOThkMi1kMGU1MjgyN2FmNGUiLCJmaXJzdE5hbWUiOiJTeXN0ZW0iLCJsYXN0TmFtZSI6IkFkbWluIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiQWRtaW4iLCJleHAiOjE3Njk2MjEyMTUsImlzcyI6IklkZW50aXR5QXBpIiwiYXVkIjoiQmFja2VuZFNlcnZpY2VzIn0.9NTRhvzRLEzmSXANhM_E9OBVK2_RRKO9fkXbT96oZDw
+
+{
+  "name": "Monitörler",
+  "description": "Gaming ve profesyonel monitörler",
+  "imageUrl": null,
+  "parentCategoryId": null
+}
+
+###################################
+# HEALTH CHECKS
+###################################
+
+### Gateway Health
+GET {{Gateway.Api_HostAddress}}/health
+
+### Gateway Liveness
+GET {{Gateway.Api_HostAddress}}/health/live

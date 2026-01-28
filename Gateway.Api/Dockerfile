@@ -6,7 +6,7 @@ WORKDIR /src
 COPY Backend-Case3.sln .
 COPY Gateway.Api/Gateway.Api.csproj Gateway.Api/
 
-# Restore dependencies (12-Factor: Bağımlılıklar)
+# Restore dependencies ( Bağımlılıklar)
 RUN dotnet restore Gateway.Api/Gateway.Api.csproj
 
 # Copy source code
@@ -36,11 +36,11 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
-# 12-Factor: Port Bağımsızlığı - Port environment variable ile belirlenir
+# Port Bağımsızlığı - Port environment variable ile belirlenir
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
-# 12-Factor: Logs - stdout'a yaz
+# Logs - stdout'a yaz
 ENV Logging__Console__FormatterName=Json
 
 # Health check

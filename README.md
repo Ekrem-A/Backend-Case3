@@ -1,8 +1,8 @@
-# Backend Microservices - Authentication & Authorization API
+# Backend Microservices - Authentication, Authorization & Products API
 
-JWT tabanlı kimlik doğrulama ve yetkilendirme sistemi ile mikroservis mimarisi kullanan .NET 8 projesi.
+JWT tabanlı kimlik doğrulama/yetkilendirme sistemi ve CQRS pattern ile ürün yönetimi mikroservisleri. .NET 8 + Kafka + Docker.
 
-**🎯 12-Factor App Prensiplerine Uygun Geliştirmeler yapılıyor.
+**🎯 12-Factor App Prensiplerine Uygun Geliştirme
 
 ## 🏗️ Mimari Yapı
 
@@ -16,20 +16,26 @@ JWT tabanlı kimlik doğrulama ve yetkilendirme sistemi ile mikroservis mimarisi
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
-            ┌───────────────┴───────────────┐
-            │                               │
-            ▼                               ▼
-┌───────────────────────┐       ┌───────────────────────┐
-│    Identity.Api       │       │    Products.Api       │
-│  localhost:5101       │       │  localhost:5102       │
-│                       │       │                       │
-│ • Kullanıcı Kaydı     │       │ • Ürün CRUD           │
-│ • Login/Logout        │       │ • Kategori Yönetimi   │
-│ • JWT Token           │       │                       │
-│ • Refresh Token       │       │                       │
-│ • Rol Yönetimi        │       │                       │
-│ • Admin İşlemleri     │       │                       │
-└───────────────────────┘       └───────────────────────┘
+            ┌───────────────┼───────────────┐
+            │               │               │
+            ▼               ▼               ▼
+┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+│   Identity.Api    │ │   Products.Api    │ │      Kafka        │
+│  localhost:5101   │ │  localhost:5102   │ │  localhost:9092   │
+│                   │ │                   │ │                   │
+│ • Kullanıcı Kaydı │ │ • Ürün CRUD       │ │ • Event Streaming │
+│ • Login/Logout    │ │ • Kategori        │ │ • product-events  │
+│ • JWT Token       │ │ • CQRS Pattern    │ │                   │
+│ • Refresh Token   │ │ • MediatR         │ │                   │
+│ • Rol Yönetimi    │ │ • Kafka Events    │ │                   │
+└───────────────────┘ └───────────────────┘ └───────────────────┘
+           │                   │
+           └─────────┬─────────┘
+                     ▼
+            ┌───────────────────┐
+            │    SQL Server     │
+            │  localhost:1433   │
+            └───────────────────┘
 ```
 
 ## 📋 12-Factor App Uyumluluğu
@@ -39,7 +45,7 @@ JWT tabanlı kimlik doğrulama ve yetkilendirme sistemi ile mikroservis mimarisi
 | **1. Kod Tabanı** | ✅ Git | Merkezi kod deposu, `.gitignore` yapılandırılmış |
 | **2. Bağımlılıklar** | ✅ NuGet | Tüm bağımlılıklar `.csproj` dosyalarında tanımlı |
 | **3. Konfigürasyon** | ✅ Environment Variables | `appsettings.json` + ortam değişkenleri |
-| **4. Destek Servisleri** | ✅ Ayrılmış | SQL Server, mikroservisler bağımsız |
+| **4. Destek Servisleri** | ✅ Ayrılmış | SQL Server, Kafka, mikroservisler bağımsız |
 | **5. Build/Run Ayrımı** | ✅ Docker | Multi-stage build, ayrı derleme ve çalışma |
 | **6. Stateless** | ✅ JWT | Token tabanlı, session yok |
 | **7. Port Bağımsızlığı** | ✅ Konfigüre edilebilir | Environment ile port belirlenir |
@@ -56,9 +62,12 @@ JWT tabanlı kimlik doğrulama ve yetkilendirme sistemi ile mikroservis mimarisi
 | .NET | 8.0 | Framework |
 | YARP | - | Reverse Proxy (API Gateway) |
 | Entity Framework Core | 8.0 | ORM |
-| SQL Server LocalDB | - | Veritabanı |
+| SQL Server | 2022 | Veritabanı |
 | Microsoft Identity | 8.0 | Kimlik Yönetimi |
 | JWT Bearer | 8.0 | Token Tabanlı Kimlik Doğrulama |
+| MediatR | 12.2 | CQRS Pattern |
+| FluentValidation | 11.9 | Validasyon |
+| Confluent.Kafka | 2.3 | Event Streaming |
 | Serilog | 8.0 | Yapılandırılmış Loglama |
 | Docker | - | Konteynerizasyon |
 | Swagger/OpenAPI | 6.6 | API Dokümantasyonu |
@@ -74,32 +83,48 @@ Backend-Case3/
 │
 ├── Identity.Api/                # Kimlik Doğrulama API
 │   ├── Controllers/
-│   │   ├── AuthController.cs   # Login, Register, Token işlemleri
-│   │   └── AdminController.cs  # Admin yönetim işlemleri
-│   ├── Program.cs              # Serilog, Health Checks, Graceful Shutdown
-│   └── Dockerfile              # Docker build
+│   │   ├── AuthController.cs   # Login, Register, Token
+│   │   └── AdminController.cs  # Admin yönetim
+│   └── Dockerfile
 │
 ├── Identity.Application/        # İş mantığı katmanı
-│   ├── Models/
-│   │   ├── DTOs/               # Data Transfer Objects
-│   │   └── JwtSettings.cs
-│   └── Services/
-│       ├── IAuthService.cs
-│       └── AuthService.cs
-│
 ├── Identity.Domain/             # Domain katmanı
-│   └── Entities/
-│       ├── ApplicationUser.cs
-│       └── RefreshToken.cs
-│
 ├── Identity.Infrastructure/     # Altyapı katmanı
-│   └── Data/
-│       ├── ApplicationDbContext.cs
-│       └── DbInitializer.cs    # Seed Data (Admin, Roller)
 │
-├── docker-compose.yml          # Docker Compose
-├── docker-compose.override.yml # Development override
-├── .gitignore                  # Git ignore
+├── Products.Api/                # Ürün Yönetimi API (CQRS)
+│   ├── Controllers/
+│   │   ├── ProductsController.cs
+│   │   └── CategoriesController.cs
+│   └── Dockerfile
+│
+├── Products.Application/        # CQRS - Commands & Queries
+│   ├── Commands/               # CreateProductCommand, etc.
+│   ├── Queries/                # GetAllProductsQuery, etc.
+│   ├── Handlers/               # Command & Query Handlers
+│   ├── Validators/             # FluentValidation
+│   └── DTOs/
+│
+├── Products.Domain/             # Domain Entities & Events
+│   ├── Entities/
+│   │   ├── Product.cs
+│   │   └── Category.cs
+│   ├── Events/
+│   │   ├── ProductCreatedEvent.cs
+│   │   ├── ProductUpdatedEvent.cs
+│   │   └── ProductStockChangedEvent.cs
+│   └── Interfaces/
+│       ├── IProductRepository.cs
+│       └── ICategoryRepository.cs
+│
+├── Products.Infrastructure/     # Data & Messaging
+│   ├── Data/
+│   │   ├── ProductsDbContext.cs
+│   │   └── DbInitializer.cs    # Seed Data
+│   ├── Repositories/
+│   └── Messaging/
+│       └── KafkaEventPublisher.cs
+│
+├── docker-compose.yml          # Docker Compose (SQL, Kafka, Services)
 └── README.md
 ```
 
@@ -107,37 +132,21 @@ Backend-Case3/
 
 ### Gereksinimler
 - .NET 8 SDK
-- SQL Server LocalDB (Visual Studio ile birlikte gelir)
-- Docker Desktop (opsiyonel)
+- Docker Desktop
 - Visual Studio 2022 veya VS Code
 
-### Seçenek 1: Yerel Geliştirme
+### Docker ile Çalıştırma (Önerilen)
 
 ```bash
 # Projeyi klonla
 git clone <repo-url>
 cd Backend-Case3
 
-# Migration oluştur
-dotnet ef migrations add InitialCreate --project Identity.Infrastructure --startup-project Identity.Api --output-dir Migrations
-
-# Veritabanını güncelle
-dotnet ef database update --project Identity.Infrastructure --startup-project Identity.Api
-
-# Servisleri başlat (ayrı terminallerde)
-dotnet run --project Identity.Api
-dotnet run --project Gateway.Api
-```
-
-### Seçenek 2: Docker ile Çalıştırma
-
-```bash
-# Environment değişkenlerini ayarla
-copy env.example.txt .env
-# .env dosyasını düzenleyin
-
 # Docker Compose ile başlat
 docker-compose up -d
+
+# Servislerin durumunu kontrol et
+docker-compose ps
 
 # Logları izle
 docker-compose logs -f
@@ -146,10 +155,26 @@ docker-compose logs -f
 docker-compose down
 ```
 
+### Yerel Geliştirme
+
+```bash
+# SQL Server ve Kafka'yı Docker'da başlat
+docker-compose up -d sqlserver kafka zookeeper
+
+# Migration oluştur
+dotnet ef migrations add InitialCreate --project Identity.Infrastructure --startup-project Identity.Api
+dotnet ef migrations add InitialCreate --project Products.Infrastructure --startup-project Products.Api
+
+# Servisleri başlat (ayrı terminallerde)
+dotnet run --project Identity.Api
+dotnet run --project Products.Api
+dotnet run --project Gateway.Api
+```
+
 ### Visual Studio ile Çalıştırma
 1. Solution'a sağ tıklayın → "Configure Startup Projects..."
 2. "Multiple startup projects" seçin
-3. `Gateway.Api` ve `Identity.Api` için "Start" seçin
+3. `Gateway.Api`, `Identity.Api`, `Products.Api` için "Start" seçin
 4. F5 ile çalıştırın
 
 ## 🔐 Varsayılan Admin Kullanıcı
@@ -169,13 +194,8 @@ Uygulama ilk çalıştırıldığında otomatik olarak oluşturulur:
 |--------|-----|
 | API Gateway | `http://localhost:5100` |
 | Identity API (Swagger) | `http://localhost:5101/swagger` |
-
-### Health Check Endpoint'leri
-| Endpoint | Açıklama |
-|----------|----------|
-| `/health` | Tüm sağlık kontrolleri (JSON) |
-| `/health/live` | Liveness probe (uygulama çalışıyor mu?) |
-| `/health/ready` | Readiness probe (bağımlılıklar hazır mı?) |
+| Products API (Swagger) | `http://localhost:5102/swagger` |
+| Kafka UI | `http://localhost:8081` |
 
 ### Auth Endpoint'leri (Herkese Açık)
 
@@ -199,23 +219,62 @@ Uygulama ilk çalıştırıldığında otomatik olarak oluşturulur:
 | POST | `/api/admin/roles` | Yeni rol oluştur |
 | DELETE | `/api/admin/roles/{name}` | Rol sil |
 
+### Products Endpoint'leri
+
+| Metod | Endpoint | Yetki | Açıklama |
+|-------|----------|-------|----------|
+| GET | `/api/products` | Herkese Açık | Tüm ürünler (sayfalama) |
+| GET | `/api/products/{id}` | Herkese Açık | Ürün detay |
+| GET | `/api/products/category/{categoryId}` | Herkese Açık | Kategoriye göre ürünler |
+| GET | `/api/products/search?q=...` | Herkese Açık | Ürün arama |
+| POST | `/api/products` | Admin | Ürün ekle (Kafka event) |
+| PUT | `/api/products/{id}` | Admin | Ürün güncelle |
+| DELETE | `/api/products/{id}` | Admin | Ürün sil |
+| PATCH | `/api/products/{id}/stock` | Admin | Stok güncelle |
+
+### Categories Endpoint'leri
+
+| Metod | Endpoint | Yetki | Açıklama |
+|-------|----------|-------|----------|
+| GET | `/api/categories` | Herkese Açık | Tüm kategoriler |
+| GET | `/api/categories/tree` | Herkese Açık | Kategori ağacı (hiyerarşik) |
+| POST | `/api/categories` | Admin | Kategori oluştur |
+
+### Health Check Endpoint'leri
+
+| Endpoint | Açıklama |
+|----------|----------|
+| `/health` | Tüm sağlık kontrolleri (JSON) |
+| `/health/live` | Liveness probe |
+| `/health/ready` | Readiness probe |
+
+## 📦 Örnek Kategoriler ve Ürünler (Seed Data)
+
+### Kategoriler
+- İşlemciler (CPU)
+- Ekran Kartları (GPU)
+- Bellekler (RAM)
+- Depolama (SSD, HDD)
+- Anakartlar
+- Güç Kaynakları (PSU)
+- Kasalar
+- Soğutma
+
+### Örnek Ürünler
+- Intel Core i9-14900K
+- AMD Ryzen 9 7950X3D
+- NVIDIA GeForce RTX 4090
+- AMD Radeon RX 7900 XTX
+- G.Skill Trident Z5 RGB DDR5
+- Samsung 990 Pro NVMe
+- ASUS ROG Maximus Z790 Hero
+- Corsair HX1500i PSU
+- Lian Li O11 Dynamic EVO
+- NZXT Kraken Z73 RGB
+
 ## 📝 Kullanım Örnekleri
 
-### 1. Kullanıcı Kaydı
-```http
-POST http://localhost:5100/api/auth/register
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "Test123!",
-  "confirmPassword": "Test123!",
-  "firstName": "John",
-  "lastName": "Doe"
-}
-```
-
-### 2. Login
+### 1. Login
 ```http
 POST http://localhost:5100/api/auth/login
 Content-Type: application/json
@@ -226,78 +285,32 @@ Content-Type: application/json
 }
 ```
 
-**Yanıt:**
-```json
-{
-  "success": true,
-  "message": "Login successful.",
-  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-  "refreshToken": "abc123...",
-  "accessTokenExpiration": "2026-01-27T16:00:00Z",
-  "user": {
-    "id": "...",
-    "email": "admin@example.com",
-    "firstName": "System",
-    "lastName": "Admin"
-  }
-}
-```
-
-### 3. Health Check
+### 2. Ürünleri Listele
 ```http
-GET http://localhost:5100/health
+GET http://localhost:5100/api/products?pageNumber=1&pageSize=10
 ```
 
-**Yanıt:**
-```json
+### 3. Ürün Ara
+```http
+GET http://localhost:5100/api/products/search?q=intel
+```
+
+### 4. Yeni Ürün Ekle (Admin)
+```http
+POST http://localhost:5100/api/products
+Content-Type: application/json
+Authorization: Bearer {token}
+
 {
-  "status": "Healthy",
-  "gateway": "YARP API Gateway",
-  "checks": [
-    { "name": "self", "status": "Healthy", "duration": 0.5 },
-    { "name": "identity-api", "status": "Healthy", "duration": 15.2 }
-  ],
-  "totalDuration": 15.8
+  "name": "Intel Core i7-14700K",
+  "description": "20 çekirdekli işlemci",
+  "sku": "CPU-INT-I7-14700K",
+  "brand": "Intel",
+  "price": 18999.99,
+  "stock": 20,
+  "categoryId": "category-guid"
 }
 ```
-
-## ⚙️ Konfigürasyon (12-Factor: Config)
-
-### Environment Variables
-```bash
-# JWT Ayarları
-JWT_SECRET_KEY=your-super-secret-key-min-32-characters
-JWT_ISSUER=IdentityApi
-JWT_AUDIENCE=BackendServices
-
-# Veritabanı
-DATABASE_CONNECTION_STRING=Server=...;Database=IdentityDb;...
-
-# Ortam
-ASPNETCORE_ENVIRONMENT=Production
-```
-
-### appsettings.json Yapısı
-```json
-{
-  "JwtSettings": {
-    "SecretKey": "${JWT_SECRET_KEY}",
-    "Issuer": "${JWT_ISSUER}",
-    "Audience": "${JWT_AUDIENCE}",
-    "AccessTokenExpirationMinutes": 15,
-    "RefreshTokenExpirationDays": 7
-  },
-  "ConnectionStrings": {
-    "DefaultConnection": "${DATABASE_CONNECTION_STRING}"
-  }
-}
-```
-
-### Ortam Bazlı Yapılandırma
-- `appsettings.json` - Temel yapılandırma (placeholder'lar)
-- `appsettings.Development.json` - Development değerleri
-- `appsettings.Production.json` - Production değerleri
-- Environment Variables - Hassas veriler (secrets)
 
 ## 🔒 Güvenlik Özellikleri
 
@@ -309,57 +322,36 @@ ASPNETCORE_ENVIRONMENT=Production
 - ✅ CORS Politikası
 - ✅ API Gateway ile Merkezi Kimlik Doğrulama
 - ✅ Non-root Docker kullanıcısı
+- ✅ Input Validation (FluentValidation)
 
-## 📊 Roller
-
-| Rol | Yetkiler |
-|-----|----------|
-| **Admin** | Tam yetki - Kullanıcı ve rol yönetimi |
-| **Manager** | Yönetici işlemleri |
-| **User** | Standart kullanıcı işlemleri |
-
-## 📋 Loglama (12-Factor: Logs)
-
-Proje Serilog kullanarak yapılandırılmış loglama sağlar:
+## 📊 CQRS Pattern
 
 ```
-[14:32:15 INF] [Identity.Api] Starting Identity.Api service...
-[14:32:16 INF] [Identity.Api] Database seeding completed successfully
-[14:32:16 INF] [Identity.Api] Identity.Api started successfully
-[14:32:20 INF] [Identity.Api] HTTP POST /api/Auth/login responded 200 in 125.4532 ms
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Controller │────▶│   MediatR   │────▶│   Handler   │
+└─────────────┘     └─────────────┘     └─────────────┘
+                           │                    │
+                    ┌──────┴──────┐             │
+                    │             │             ▼
+              ┌─────┴─────┐ ┌─────┴─────┐ ┌──────────┐
+              │  Command  │ │   Query   │ │Repository│
+              └───────────┘ └───────────┘ └──────────┘
+                    │                          │
+                    ▼                          ▼
+              ┌───────────┐           ┌──────────────┐
+              │   Kafka   │           │   Database   │
+              │   Event   │           │              │
+              └───────────┘           └──────────────┘
 ```
 
-**Özellikler:**
-- Yapılandırılmış JSON formatı
-- Service name ile etiketleme
-- Environment ve machine name enrichment
-- HTTP request logging
-- Console output (stdout - 12 Factor uyumlu)
+## 🎯 Kafka Events
 
-## 🧪 Test
-
-### Swagger UI
-- Identity API: `http://localhost:5101/swagger`
-
-### .http Dosyaları
-Visual Studio veya VS Code REST Client ile:
-- `Gateway.Api/Gateway.Api.http`
-- `Identity.Api/Identity.Api.http`
-
-### Health Checks
-```bash
-# Gateway health
-curl http://localhost:5100/health
-
-# Identity API health
-curl http://localhost:5101/health
-
-# Liveness probe
-curl http://localhost:5100/health/live
-
-# Readiness probe
-curl http://localhost:5100/health/ready
-```
+| Event | Açıklama |
+|-------|----------|
+| `ProductCreatedEvent` | Ürün oluşturulduğunda |
+| `ProductUpdatedEvent` | Ürün güncellendiğinde |
+| `ProductStockChangedEvent` | Stok değiştiğinde |
+| `ProductDeletedEvent` | Ürün silindiğinde |
 
 ## 🐳 Docker Komutları
 
@@ -371,14 +363,14 @@ docker-compose build
 docker-compose up -d
 
 # Logları izle
-docker-compose logs -f gateway-api
-docker-compose logs -f identity-api
+docker-compose logs -f products-api
+docker-compose logs -f kafka
+
+# Kafka topic'leri listele
+docker exec backend-kafka kafka-topics --list --bootstrap-server localhost:9092
 
 # Durdur ve temizle
 docker-compose down -v
-
-# Sadece belirli servisi yeniden başlat
-docker-compose restart identity-api
 ```
 
 ## 📄 Lisans

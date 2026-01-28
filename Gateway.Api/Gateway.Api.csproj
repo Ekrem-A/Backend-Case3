@@ -5,12 +5,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <DockerfileContext>..</DockerfileContext>
+    <UserSecretsId>692b1bf4-63af-468c-af76-d621de86f97a</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.Uris" Version="8.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
     <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />

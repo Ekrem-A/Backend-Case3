@@ -1,6 +1,102 @@
 @Products.Api_HostAddress = http://localhost:5102
+@token = {{$dotenv BEARER_TOKEN}}
 
-### Products API - Örnek endpoint'ler buraya eklenecek
-# Products mikroservisi için endpoint'ler henüz tanımlanmadı
+### Get All Products (Paged)
+GET {{Products.Api_HostAddress}}/api/products?pageNumber=1&pageSize=10
+Accept: application/json
 
-###
+### Get Product By ID
+GET {{Products.Api_HostAddress}}/api/products/{06001c5c-6ca7-43e7-b2ef-4f75bbb0947c}
+Accept: application/json
+
+### Get Products By Category
+GET {{Products.Api_HostAddress}}/api/products/category/{0ba1678d-b541-49cd-8876-a0aa9030393d}
+Accept: application/json
+
+### Search Products
+GET {{Products.Api_HostAddress}}/api/products/search?q=intel
+Accept: application/json
+
+### Create Product (Requires Admin Token)
+POST {{Products.Api_HostAddress}}/api/products
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Intel Core i7-14700K",
+  "description": "20 çekirdekli (8P+12E), 28 thread",
+  "sku": "CPU-INT-I7-14700K",
+  "brand": "Intel",
+  "model": "i7-14700K",
+  "price": 18999.99,
+  "stock": 20,
+  "imageUrl": null,
+  "specifications": "{\"cores\": 20, \"threads\": 28}",
+  "categoryId": "{{$guid}}"
+}
+
+### Update Product (Requires Admin Token)
+PUT {{Products.Api_HostAddress}}/api/products/{{$guid}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Updated Product Name",
+  "description": "Updated description",
+  "brand": "Intel",
+  "model": "Updated Model",
+  "price": 19999.99,
+  "imageUrl": null,
+  "specifications": "{}",
+  "categoryId": "{{$guid}}"
+}
+
+### Update Stock (Requires Admin Token)
+PATCH {{Products.Api_HostAddress}}/api/products/{{$guid}}/stock
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "quantity": 10
+}
+
+### Delete Product (Requires Admin Token)
+DELETE {{Products.Api_HostAddress}}/api/products/{{$guid}}
+Authorization: Bearer {{token}}
+
+###################################################
+# Categories Endpoints
+###################################################
+
+### Get All Categories
+GET {{Products.Api_HostAddress}}/api/categories
+Accept: application/json
+
+### Get Category Tree
+GET {{Products.Api_HostAddress}}/api/categories/tree
+Accept: application/json
+
+### Create Category (Requires Admin Token)
+POST {{Products.Api_HostAddress}}/api/categories
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Monitörler",
+  "description": "Gaming ve profesyonel monitörler",
+  "imageUrl": null,
+  "parentCategoryId": null
+}
+
+###################################################
+# Health Checks
+###################################################
+
+### Health Check
+GET {{Products.Api_HostAddress}}/health
+
+### Liveness Check
+GET {{Products.Api_HostAddress}}/health/live
+
+### Readiness Check
+GET {{Products.Api_HostAddress}}/health/ready

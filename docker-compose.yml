@@ -1,10 +1,8 @@
 # 12-Factor App: Docker Compose
 # Tüm servisleri tek bir komutla başlatma
 
-version: '3.8'
-
 services:
-  # SQL Server Database (Docker Container)
+  # SQL Server Database
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: backend-sqlserver
@@ -25,6 +23,59 @@ services:
     networks:
       - backend-network
 
+  # Zookeeper (Kafka için gerekli)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: backend-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - backend-network
+
+  # Apache Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: backend-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: kafka-topics --bootstrap-server localhost:9092 --list || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend-network
+
+  # Kafka UI (Opsiyonel - Kafka yönetim arayüzü)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: backend-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: backend-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - backend-network
+
   # Identity API
   identity-api:
     build:
@@ -33,7 +84,6 @@ services:
     container_name: backend-identity-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      # Docker içindeki SQL Server'a bağlantı
       - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=IdentityDb;User Id=sa;Password=Ekoo@3003;TrustServerCertificate=True
       - JwtSettings__SecretKey=ahfgkmcnhfgyruıoplksgerwqhnvbcgr
       - JwtSettings__Issuer=IdentityApi
@@ -46,7 +96,44 @@ services:
       sqlserver:
         condition: service_healthy
     healthcheck:
-      test: curl -f http://localhost:8080/health/live || exit 1
+      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    networks:
+      - backend-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Products API (CQRS + Kafka)
+  products-api:
+    build:
+      context: .
+      dockerfile: Products.Api/Dockerfile
+    container_name: backend-products-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=ProductsDb;User Id=sa;Password=Ekoo@3003;TrustServerCertificate=True
+      - JwtSettings__SecretKey=ahfgkmcnhfgyruıoplksgerwqhnvbcgr
+      - JwtSettings__Issuer=IdentityApi
+      - JwtSettings__Audience=BackendServices
+      - Kafka__Enabled=true
+      - Kafka__BootstrapServers=kafka:29092
+      - Kafka__ProductEventsTopic=product-events
+      - Kafka__GroupId=products-service
+    ports:
+      - "5102:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
@@ -77,8 +164,10 @@ services:
     depends_on:
       identity-api:
         condition: service_healthy
+      products-api:
+        condition: service_healthy
     healthcheck:
-      test: curl -f http://localhost:8080/health/live || exit 1
+      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
