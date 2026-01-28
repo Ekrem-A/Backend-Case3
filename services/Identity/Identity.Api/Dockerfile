@@ -4,22 +4,22 @@ WORKDIR /src
 
 # Copy solution and project files
 COPY Backend-Case3.sln .
-COPY Identity.Api/Identity.Api.csproj Identity.Api/
-COPY Identity.Application/Identity.Application.csproj Identity.Application/
-COPY Identity.Domain/Identity.Domain.csproj Identity.Domain/
-COPY Identity.Infrastructure/Identity.Infrastructure.csproj Identity.Infrastructure/
+COPY services/Identity/Identity.Api/Identity.Api.csproj services/Identity/Identity.Api/
+COPY services/Identity/Identity.Application/Identity.Application.csproj services/Identity/Identity.Application/
+COPY services/Identity/Identity.Domain/Identity.Domain.csproj services/Identity/Identity.Domain/
+COPY services/Identity/Identity.Infrastructure/Identity.Infrastructure.csproj services/Identity/Identity.Infrastructure/
 
 # Restore dependencies (12-Factor: Bağımlılıklar)
-RUN dotnet restore Identity.Api/Identity.Api.csproj
+RUN dotnet restore services/Identity/Identity.Api/Identity.Api.csproj
 
 # Copy source code
-COPY Identity.Api/ Identity.Api/
-COPY Identity.Application/ Identity.Application/
-COPY Identity.Domain/ Identity.Domain/
-COPY Identity.Infrastructure/ Identity.Infrastructure/
+COPY services/Identity/Identity.Api/ services/Identity/Identity.Api/
+COPY services/Identity/Identity.Application/ services/Identity/Identity.Application/
+COPY services/Identity/Identity.Domain/ services/Identity/Identity.Domain/
+COPY services/Identity/Identity.Infrastructure/ services/Identity/Identity.Infrastructure/
 
 # Build
-WORKDIR /src/Identity.Api
+WORKDIR /src/services/Identity/Identity.Api
 RUN dotnet build -c Release -o /app/build
 
 # Publish stage
