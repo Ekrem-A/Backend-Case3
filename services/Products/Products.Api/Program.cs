@@ -8,12 +8,15 @@ using Microsoft.OpenApi.Models;
 using Products.Application.Behaviors;
 using Products.Application.Commands;
 using Products.Application.Handlers;
+using Products.Application.Interfaces;
 using Products.Domain.Interfaces;
+using Products.Infrastructure.Caching;
 using Products.Infrastructure.Data;
 using Products.Infrastructure.Messaging;
 using Products.Infrastructure.Repositories;
 using Serilog;
 using Serilog.Events;
+using StackExchange.Redis;
 
 // Serilog yapılandırması
 Log.Logger = new LoggerConfiguration()
@@ -55,9 +58,39 @@ try
     builder.Services.AddDbContext<ProductsDbContext>(options =>
         options.UseSqlServer(connectionString));
 
+    // Redis Cache
+    var redisEnabled = builder.Configuration.GetValue<bool>("Redis:Enabled");
+    var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString");
+
+    if (redisEnabled && !string.IsNullOrEmpty(redisConnectionString))
+    {
+        Log.Information("Redis cache enabled, connecting to: {RedisConnection}", redisConnectionString);
+        
+        builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+            ConnectionMultiplexer.Connect(redisConnectionString));
+
+        builder.Services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnectionString;
+            options.InstanceName = "Products:";
+        });
+
+        builder.Services.AddSingleton<ICacheService, RedisCacheService>();
+    }
+    else
+    {
+        Log.Information("Redis cache disabled, using NullCacheService");
+        builder.Services.AddSingleton<ICacheService, NullCacheService>();
+    }
+
     // Health Checks
-    builder.Services.AddHealthChecks()
+    var healthChecksBuilder = builder.Services.AddHealthChecks()
         .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), tags: new[] { "live" });
+
+    if (redisEnabled && !string.IsNullOrEmpty(redisConnectionString))
+    {
+        healthChecksBuilder.AddRedis(redisConnectionString, name: "redis", tags: new[] { "db", "cache" });
+    }
 
     // MediatR
     builder.Services.AddMediatR(cfg => {
@@ -118,7 +151,7 @@ try
         {
             Title = "Products API",
             Version = "v1",
-            Description = "Bilgisayar Bileşenleri Ürün Yönetimi API - CQRS Pattern"
+            Description = "Bilgisayar Bileşenleri Ürün Yönetimi API - CQRS Pattern with Redis Cache"
         });
 
         c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme

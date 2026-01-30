@@ -1,6 +1,8 @@
 using MediatR;
 using Products.Application.Commands;
+using Products.Application.Constants;
 using Products.Application.DTOs;
+using Products.Application.Interfaces;
 using Products.Domain.Events;
 using Products.Domain.Interfaces;
 
@@ -11,15 +13,18 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
     private readonly IProductRepository _productRepository;
     private readonly ICategoryRepository _categoryRepository;
     private readonly IEventPublisher _eventPublisher;
+    private readonly ICacheService _cacheService;
 
     public UpdateProductCommandHandler(
         IProductRepository productRepository,
         ICategoryRepository categoryRepository,
-        IEventPublisher eventPublisher)
+        IEventPublisher eventPublisher,
+        ICacheService cacheService)
     {
         _productRepository = productRepository;
         _categoryRepository = categoryRepository;
         _eventPublisher = eventPublisher;
+        _cacheService = cacheService;
     }
 
     public async Task<ProductDto> Handle(UpdateProductCommand request, CancellationToken cancellationToken)
@@ -41,6 +46,10 @@ public class UpdateProductCommandHandler : IRequestHandler<UpdateProductCommand,
         product.UpdatedAt = DateTime.UtcNow;
 
         await _productRepository.UpdateAsync(product, cancellationToken);
+
+        // Cache invalidation - hem detay hem liste cache'lerini temizle
+        await _cacheService.RemoveAsync(CacheKeys.ProductById(request.Id), cancellationToken);
+        await _cacheService.RemoveByPrefixAsync(CacheKeys.ProductsPrefix, cancellationToken);
 
         // Publish event
         var productUpdatedEvent = new ProductUpdatedEvent(

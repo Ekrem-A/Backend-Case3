@@ -144,8 +144,8 @@ Authorization: Bearer {{adminToken}}
 }
 
 ### Delete Product (Admin only)
-DELETE {{Gateway.Api_HostAddress}}/api/products/{{productId}}
-Authorization: Bearer {{adminToken}}
+DELETE {{Gateway.Api_HostAddress}}/api/products/5C25B1B7-55F8-4539-B42C-6FE2A79FC3C5
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiYTA4ZGViYS0yZDZiLTRmZjQtOThkMi1kMGU1MjgyN2FmNGUiLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwianRpIjoiYTY4OTU1YjgtMzMyNC00MDYzLTk2OGUtZWI5ZjFjNmQ5MmViIiwiaHR0cDovL3NjaGVtYXMueG1sc29hcC5vcmcvd3MvMjAwNS8wNS9pZGVudGl0eS9jbGFpbXMvbmFtZWlkZW50aWZpZXIiOiJiYTA4ZGViYS0yZDZiLTRmZjQtOThkMi1kMGU1MjgyN2FmNGUiLCJmaXJzdE5hbWUiOiJTeXN0ZW0iLCJsYXN0TmFtZSI6IkFkbWluIiwiaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS93cy8yMDA4LzA2L2lkZW50aXR5L2NsYWltcy9yb2xlIjoiQWRtaW4iLCJleHAiOjE3Njk2MjkyMDMsImlzcyI6IklkZW50aXR5QXBpIiwiYXVkIjoiQmFja2VuZFNlcnZpY2VzIn0.wwB_CqNVYVrls7fkqfbcitJM85hPAN36Q-qeNX1An9k
 
 ###################################
 # CATEGORIES ENDPOINTS

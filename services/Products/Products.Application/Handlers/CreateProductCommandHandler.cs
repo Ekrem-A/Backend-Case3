@@ -1,6 +1,8 @@
 using MediatR;
 using Products.Application.Commands;
+using Products.Application.Constants;
 using Products.Application.DTOs;
+using Products.Application.Interfaces;
 using Products.Domain.Entities;
 using Products.Domain.Events;
 using Products.Domain.Interfaces;
@@ -12,15 +14,18 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
     private readonly IProductRepository _productRepository;
     private readonly ICategoryRepository _categoryRepository;
     private readonly IEventPublisher _eventPublisher;
+    private readonly ICacheService _cacheService;
 
     public CreateProductCommandHandler(
         IProductRepository productRepository,
         ICategoryRepository categoryRepository,
-        IEventPublisher eventPublisher)
+        IEventPublisher eventPublisher,
+        ICacheService cacheService)
     {
         _productRepository = productRepository;
         _categoryRepository = categoryRepository;
         _eventPublisher = eventPublisher;
+        _cacheService = cacheService;
     }
 
     public async Task<ProductDto> Handle(CreateProductCommand request, CancellationToken cancellationToken)
@@ -51,6 +56,9 @@ public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand,
         };
 
         await _productRepository.AddAsync(product, cancellationToken);
+
+        // Cache invalidation - ürün listelerini temizle
+        await _cacheService.RemoveByPrefixAsync(CacheKeys.ProductsPrefix, cancellationToken);
 
         // Publish event to Kafka
         var productCreatedEvent = new ProductCreatedEvent(

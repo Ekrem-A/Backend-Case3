@@ -23,6 +23,24 @@ services:
     networks:
       - backend-network
 
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: backend-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: redis-cli ping | grep PONG || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend-network
+
   # Zookeeper (Kafka için gerekli)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -80,7 +98,7 @@ services:
   identity-api:
     build:
       context: .
-      dockerfile: Identity.Api/Dockerfile
+      dockerfile: services/Identity/Identity.Api/Dockerfile
     container_name: backend-identity-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
@@ -96,7 +114,7 @@ services:
       sqlserver:
         condition: service_healthy
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
+      test: curl -f http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
@@ -109,11 +127,11 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Products API (CQRS + Kafka)
+  # Products API (CQRS + Kafka + Redis Cache)
   products-api:
     build:
       context: .
-      dockerfile: Products.Api/Dockerfile
+      dockerfile: services/Products/Products.Api/Dockerfile
     container_name: backend-products-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
@@ -121,6 +139,8 @@ services:
       - JwtSettings__SecretKey=ahfgkmcnhfgyruıoplksgerwqhnvbcgr
       - JwtSettings__Issuer=IdentityApi
       - JwtSettings__Audience=BackendServices
+      - Redis__Enabled=true
+      - Redis__ConnectionString=redis:6379
       - Kafka__Enabled=true
       - Kafka__BootstrapServers=kafka:29092
       - Kafka__ProductEventsTopic=product-events
@@ -130,10 +150,12 @@ services:
     depends_on:
       sqlserver:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       kafka:
         condition: service_healthy
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
+      test: curl -f http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
@@ -150,7 +172,7 @@ services:
   gateway-api:
     build:
       context: .
-      dockerfile: Gateway.Api/Dockerfile
+      dockerfile: gateway/Gateway.Api/Dockerfile
     container_name: backend-gateway-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
@@ -167,7 +189,7 @@ services:
       products-api:
         condition: service_healthy
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
+      test: curl -f http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
@@ -186,4 +208,6 @@ networks:
 
 volumes:
   sqlserver_data:
+    driver: local
+  redis_data:
     driver: local
