@@ -176,10 +176,13 @@ services:
     container_name: backend-gateway-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
+      # JWT Settings
       - JwtSettings__SecretKey=ahfgkmcnhfgyruıoplksgerwqhnvbcgr
       - JwtSettings__Issuer=IdentityApi
       - JwtSettings__Audience=BackendServices
+      # Reverse Proxy - Identity Cluster
       - ReverseProxy__Clusters__identity-cluster__Destinations__identity-api__Address=http://identity-api:8080
+      # Reverse Proxy - Products Cluster
       - ReverseProxy__Clusters__products-cluster__Destinations__products-api__Address=http://products-api:8080
     ports:
       - "5100:8080"
