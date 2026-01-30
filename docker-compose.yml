@@ -98,7 +98,7 @@ services:
   identity-api:
     build:
       context: .
-      dockerfile: Identity.Api/Dockerfile
+      dockerfile: services/Identity/Identity.Api/Dockerfile
     container_name: backend-identity-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
@@ -114,7 +114,7 @@ services:
       sqlserver:
         condition: service_healthy
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
+      test: curl -f http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
@@ -131,7 +131,7 @@ services:
   products-api:
     build:
       context: .
-      dockerfile: Products.Api/Dockerfile
+      dockerfile: services/Products/Products.Api/Dockerfile
     container_name: backend-products-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
@@ -155,7 +155,7 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
+      test: curl -f http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
@@ -172,7 +172,7 @@ services:
   gateway-api:
     build:
       context: .
-      dockerfile: Gateway.Api/Dockerfile
+      dockerfile: gateway/Gateway.Api/Dockerfile
     container_name: backend-gateway-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
@@ -189,7 +189,7 @@ services:
       products-api:
         condition: service_healthy
     healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:8080/health/live || exit 1
+      test: curl -f http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
