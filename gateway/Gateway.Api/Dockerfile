@@ -2,12 +2,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy solution and project files
-COPY Backend-Case3.sln .
-COPY gateway/Gateway.Api/Gateway.Api.csproj gateway/Gateway.Api/
+# Copy project files
+COPY ["gateway/Gateway.Api/Gateway.Api.csproj", "gateway/Gateway.Api/"]
 
 # Restore dependencies (Bağımlılıklar)
-RUN dotnet restore gateway/Gateway.Api/Gateway.Api.csproj
+RUN dotnet restore "gateway/Gateway.Api/Gateway.Api.csproj"
 
 # Copy source code
 COPY gateway/Gateway.Api/ gateway/Gateway.Api/

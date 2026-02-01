@@ -94,6 +94,28 @@ services:
     networks:
       - backend-network
 
+  # Seq Log Server (Merkezi Log Toplama)
+  seq:
+    image: datalust/seq:latest
+    container_name: backend-seq
+    environment:
+      - ACCEPT_EULA=Y
+      - SEQ_FIRSTRUN_ADMINUSERNAME=admin
+      - SEQ_FIRSTRUN_ADMINPASSWORD=admin123
+    ports:
+      - "5341:80"      # Web UI ve API
+      - "5342:5341"    # Ingestion API
+    volumes:
+      - seq_data:/data
+    healthcheck:
+      test: curl -f http://localhost:80/api || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend-network
+
   # Identity API
   identity-api:
     build:
@@ -108,10 +130,13 @@ services:
       - JwtSettings__Audience=BackendServices
       - JwtSettings__AccessTokenExpirationMinutes=15
       - JwtSettings__RefreshTokenExpirationDays=7
+      - SEQ_URL=http://seq:80
     ports:
       - "5101:8080"
     depends_on:
       sqlserver:
+        condition: service_healthy
+      seq:
         condition: service_healthy
     healthcheck:
       test: curl -f http://localhost:8080/health/live || exit 1
@@ -145,6 +170,7 @@ services:
       - Kafka__BootstrapServers=kafka:29092
       - Kafka__ProductEventsTopic=product-events
       - Kafka__GroupId=products-service
+      - SEQ_URL=http://seq:80
     ports:
       - "5102:8080"
     depends_on:
@@ -153,6 +179,8 @@ services:
       redis:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      seq:
         condition: service_healthy
     healthcheck:
       test: curl -f http://localhost:8080/health/live || exit 1
@@ -184,12 +212,16 @@ services:
       - ReverseProxy__Clusters__identity-cluster__Destinations__identity-api__Address=http://identity-api:8080
       # Reverse Proxy - Products Cluster
       - ReverseProxy__Clusters__products-cluster__Destinations__products-api__Address=http://products-api:8080
+      # Seq Logging
+      - SEQ_URL=http://seq:80
     ports:
       - "5100:8080"
     depends_on:
       identity-api:
         condition: service_healthy
       products-api:
+        condition: service_healthy
+      seq:
         condition: service_healthy
     healthcheck:
       test: curl -f http://localhost:8080/health/live || exit 1
@@ -213,4 +245,6 @@ volumes:
   sqlserver_data:
     driver: local
   redis_data:
+    driver: local
+  seq_data:
     driver: local

@@ -2,15 +2,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy solution and project files
-COPY Backend-Case3.sln .
-COPY services/Identity/Identity.Api/Identity.Api.csproj services/Identity/Identity.Api/
-COPY services/Identity/Identity.Application/Identity.Application.csproj services/Identity/Identity.Application/
-COPY services/Identity/Identity.Domain/Identity.Domain.csproj services/Identity/Identity.Domain/
-COPY services/Identity/Identity.Infrastructure/Identity.Infrastructure.csproj services/Identity/Identity.Infrastructure/
+# Copy project files and restore dependencies
+COPY ["services/Identity/Identity.Api/Identity.Api.csproj", "services/Identity/Identity.Api/"]
+COPY ["services/Identity/Identity.Application/Identity.Application.csproj", "services/Identity/Identity.Application/"]
+COPY ["services/Identity/Identity.Domain/Identity.Domain.csproj", "services/Identity/Identity.Domain/"]
+COPY ["services/Identity/Identity.Infrastructure/Identity.Infrastructure.csproj", "services/Identity/Identity.Infrastructure/"]
 
 # Restore dependencies (12-Factor: Bağımlılıklar)
-RUN dotnet restore services/Identity/Identity.Api/Identity.Api.csproj
+RUN dotnet restore "services/Identity/Identity.Api/Identity.Api.csproj"
 
 # Copy source code
 COPY services/Identity/Identity.Api/ services/Identity/Identity.Api/
