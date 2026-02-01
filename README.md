@@ -52,7 +52,7 @@ JWT tabanlı kimlik doğrulama/yetkilendirme sistemi ve CQRS pattern ile ürün 
 | **8. Concurrency** | ✅ Async/Await | Yatay ölçeklenebilir tasarım |
 | **9. Disposability** | ✅ Graceful Shutdown | Kaynaklar düzgün serbest bırakılır |
 | **10. Dev/Prod Paritesi** | ✅ Docker Compose | Aynı yapılandırma, farklı env |
-| **11. Loglar** | ✅ Serilog | Yapılandırılmış loglar, stdout |
+| **11. Loglar** | ✅ Serilog + Seq | Yapılandırılmış loglar, merkezi toplama, CorrelationId takibi |
 | **12. Admin Prosesleri** | ✅ Health Checks | `/health`, `/health/live`, `/health/ready` |
 
 ## 🛠️ Teknolojiler
@@ -69,6 +69,7 @@ JWT tabanlı kimlik doğrulama/yetkilendirme sistemi ve CQRS pattern ile ürün 
 | FluentValidation | 11.9 | Validasyon |
 | Confluent.Kafka | 2.3 | Event Streaming |
 | Serilog | 8.0 | Yapılandırılmış Loglama |
+| Seq | Latest | Merkezi Log Toplama ve Analiz |
 | Docker | - | Konteynerizasyon |
 | Swagger/OpenAPI | 6.6 | API Dokümantasyonu |
 
@@ -243,6 +244,7 @@ Uygulama ilk çalıştırıldığında otomatik olarak oluşturulur:
 | Identity API (Swagger) | `http://localhost:5101/swagger` |
 | Products API (Swagger) | `http://localhost:5102/swagger` |
 | Kafka UI | `http://localhost:8081` |
+| Seq Log Server | `http://localhost:5341` |
 
 ### Auth Endpoint'leri (Herkese Açık)
 
@@ -400,6 +402,46 @@ Authorization: Bearer {token}
 | `ProductStockChangedEvent` | Stok değiştiğinde |
 | `ProductDeletedEvent` | Ürün silindiğinde |
 
+## 📊 Merkezi Log Yönetimi (Seq)
+
+Tüm mikroservisler **Serilog + Seq** ile merkezi log toplama sistemine bağlıdır.
+
+### Log Seviyeleri
+
+| Seviye | Serilog | Kullanım |
+|--------|---------|----------|
+| INFO | `Information` | Normal operasyonlar, başarılı işlemler |
+| WARNING | `Warning` | Potansiyel sorunlar, dikkat gerektiren durumlar |
+| ERROR | `Error` | Hata durumları, exception'lar |
+| CRITICAL | `Fatal` | Sistem çökmeleri, kritik hatalar |
+
+### Özellikler
+
+- **Structured Logging**: JSON formatında yapılandırılmış loglar
+- **CorrelationId**: İstek bazlı log takibi (`X-Correlation-ID` header)
+- **ServiceName/Version**: Her servis kendi kimliği ile log atar
+- **Real-time**: Anlık log izleme ve analiz
+- **Query**: SQL benzeri sorgulama dili
+
+### Seq Dashboard
+
+```
+http://localhost:5341
+```
+
+### Örnek Sorgu (Seq)
+
+```sql
+-- Belirli bir servisin ERROR logları
+ServiceName = 'Products.Api' and @Level = 'Error'
+
+-- CorrelationId ile istek takibi
+CorrelationId = 'abc-123-xyz'
+
+-- Son 1 saatteki tüm hatalar
+@Level in ['Error', 'Fatal'] and @Timestamp > Now() - 1h
+```
+
 ## 🐳 Docker Komutları
 
 ```bash
@@ -412,6 +454,9 @@ docker-compose up -d
 # Logları izle
 docker-compose logs -f products-api
 docker-compose logs -f kafka
+
+# Seq log server'ı izle
+docker-compose logs -f seq
 
 # Kafka topic'leri listele
 docker exec backend-kafka kafka-topics --list --bootstrap-server localhost:9092

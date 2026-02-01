@@ -1,17 +1,25 @@
 using System.Text;
+using Gateway.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
 
-//Yapılandırılmış loglama için Serilog
+// Seq URL - Environment variable veya default
+var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL") ?? "http://localhost:5341";
+
+//Yapılandırılmış loglama için Serilog (Seq entegrasyonu ile)
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .Enrich.WithEnvironmentName()
     .Enrich.WithMachineName()
     .Enrich.WithProperty("ServiceName", "Gateway.Api")
+    .Enrich.WithProperty("ServiceVersion", "1.0.0")
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.Seq(seqUrl)
     .CreateBootstrapLogger();
 
 try
@@ -20,17 +28,22 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-   // Logs - Serilog entegrasyonu
+   // Logs - Serilog entegrasyonu (Seq merkezi log toplama ile)
     builder.Host.UseSerilog((context, services, configuration) => configuration
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
-        .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
         .MinimumLevel.Override("Yarp", LogEventLevel.Information)
+        .MinimumLevel.Override("System", LogEventLevel.Warning)
         .Enrich.FromLogContext()
         .Enrich.WithEnvironmentName()
         .Enrich.WithMachineName()
         .Enrich.WithProperty("ServiceName", "Gateway.Api")
-        .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}"));
+        .Enrich.WithProperty("ServiceVersion", "1.0.0")
+        .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
+        .WriteTo.Seq(seqUrl));
 
     //Environment variables desteği
     builder.Configuration
@@ -100,10 +113,19 @@ try
 
     var app = builder.Build();
 
-    // Logs - HTTP request logging
+    // CorrelationId middleware - tüm isteklere benzersiz ID atar
+    app.UseCorrelationId();
+
+    // Logs - HTTP request logging (CorrelationId ile zenginleştirilmiş)
     app.UseSerilogRequestLogging(options =>
     {
         options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        {
+            diagnosticContext.Set("CorrelationId", httpContext.Items["CorrelationId"]?.ToString() ?? "N/A");
+            diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? "N/A");
+            diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
+        };
     });
 
     app.UseHttpsRedirection();

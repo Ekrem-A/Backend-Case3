@@ -10,16 +10,24 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
+using Serilog.Sinks.Seq;
 
-// Logs - Yapılandırılmış loglama için Serilog
+// Seq URL - Environment variable veya default
+var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL") ?? "http://localhost:5341";
+
+// Logs - Yapılandırılmış loglama için Serilog (Seq entegrasyonu ile)
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .Enrich.WithEnvironmentName()
     .Enrich.WithMachineName()
     .Enrich.WithProperty("ServiceName", "Identity.Api")
+    .Enrich.WithProperty("ServiceVersion", "1.0.0")
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.Seq(seqUrl)
     .CreateBootstrapLogger();
 
 try
@@ -28,17 +36,22 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    //  Logs - Serilog entegrasyonu
+    //  Logs - Serilog entegrasyonu (Seq merkezi log toplama ile)
     builder.Host.UseSerilog((context, services, configuration) => configuration
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
-        .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
         .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+        .MinimumLevel.Override("System", LogEventLevel.Warning)
         .Enrich.FromLogContext()
         .Enrich.WithEnvironmentName()
         .Enrich.WithMachineName()
         .Enrich.WithProperty("ServiceName", "Identity.Api")
-        .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}"));
+        .Enrich.WithProperty("ServiceVersion", "1.0.0")
+        .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
+        .WriteTo.Seq(seqUrl));
 
     //  Config - Environment variables desteği
     builder.Configuration
