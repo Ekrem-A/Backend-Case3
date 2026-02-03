@@ -2,6 +2,7 @@ using System.Text;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -73,13 +74,14 @@ try
     // Redis Cache
     var redisEnabled = builder.Configuration.GetValue<bool>("Redis:Enabled");
     var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString");
+    IConnectionMultiplexer? redisConnection = null;
 
     if (redisEnabled && !string.IsNullOrEmpty(redisConnectionString))
     {
         Log.Information("Redis cache enabled, connecting to: {RedisConnection}", redisConnectionString);
         
-        builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
-            ConnectionMultiplexer.Connect(redisConnectionString));
+        redisConnection = ConnectionMultiplexer.Connect(redisConnectionString);
+        builder.Services.AddSingleton<IConnectionMultiplexer>(redisConnection);
 
         builder.Services.AddStackExchangeRedisCache(options =>
         {
@@ -88,6 +90,13 @@ try
         });
 
         builder.Services.AddSingleton<ICacheService, RedisCacheService>();
+
+        // Data Protection - Redis'te key saklama (container restart'larında kaybolmaması için)
+        builder.Services.AddDataProtection()
+            .SetApplicationName("Backend-Services")
+            .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys");
+        
+        Log.Information("Data Protection configured with Redis persistence");
     }
     else
     {

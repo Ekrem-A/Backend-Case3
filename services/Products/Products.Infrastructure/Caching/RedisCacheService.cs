@@ -39,11 +39,11 @@ public class RedisCacheService : ICacheService
             
             if (string.IsNullOrEmpty(cachedData))
             {
-                _logger.LogDebug("Cache miss for key: {Key}", key);
+                _logger.LogInformation("?? Cache MISS for key: {Key}", key);
                 return null;
             }
 
-            _logger.LogDebug("Cache hit for key: {Key}", key);
+            _logger.LogInformation("?? Cache HIT for key: {Key}", key);
             return JsonSerializer.Deserialize<T>(cachedData, _jsonOptions);
         }
         catch (Exception ex)
@@ -65,7 +65,7 @@ public class RedisCacheService : ICacheService
             var serializedData = JsonSerializer.Serialize(value, _jsonOptions);
             await _cache.SetStringAsync(key, serializedData, options, cancellationToken);
             
-            _logger.LogDebug("Cache set for key: {Key} with expiration: {Expiration}", key, expiration);
+            _logger.LogInformation("?? Cache SET for key: {Key} with expiration: {Expiration}", key, expiration ?? TimeSpan.FromMinutes(15));
         }
         catch (Exception ex)
         {
@@ -78,7 +78,7 @@ public class RedisCacheService : ICacheService
         try
         {
             await _cache.RemoveAsync(key, cancellationToken);
-            _logger.LogDebug("Cache removed for key: {Key}", key);
+            _logger.LogInformation("??? Cache REMOVED for key: {Key}", key);
         }
         catch (Exception ex)
         {
@@ -91,13 +91,17 @@ public class RedisCacheService : ICacheService
         try
         {
             var server = _redis.GetServer(_redis.GetEndPoints().First());
-            var keys = server.Keys(pattern: $"{prefix}:*").ToArray();
+            var keys = server.Keys(pattern: $"Products:{prefix}*").ToArray();
 
             if (keys.Length > 0)
             {
                 var db = _redis.GetDatabase();
                 await db.KeyDeleteAsync(keys);
-                _logger.LogInformation("Removed {Count} cache entries with prefix: {Prefix}", keys.Length, prefix);
+                _logger.LogInformation("??? Removed {Count} cache entries with prefix: {Prefix}", keys.Length, prefix);
+            }
+            else
+            {
+                _logger.LogInformation("No cache entries found with prefix: {Prefix}", prefix);
             }
         }
         catch (Exception ex)

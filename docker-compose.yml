@@ -41,6 +41,19 @@ services:
     networks:
       - backend-network
 
+  # Redis Commander (Redis GUI)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: backend-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8082:8081"
+    depends_on:
+      - redis
+    networks:
+      - backend-network
+
   # Zookeeper (Kafka için gerekli)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -130,11 +143,14 @@ services:
       - JwtSettings__Audience=BackendServices
       - JwtSettings__AccessTokenExpirationMinutes=15
       - JwtSettings__RefreshTokenExpirationDays=7
+      - Redis__ConnectionString=redis:6379
       - SEQ_URL=http://seq:80
     ports:
       - "5101:8080"
     depends_on:
       sqlserver:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       seq:
         condition: service_healthy
@@ -208,6 +224,8 @@ services:
       - JwtSettings__SecretKey=ahfgkmcnhfgyruıoplksgerwqhnvbcgr
       - JwtSettings__Issuer=IdentityApi
       - JwtSettings__Audience=BackendServices
+      # Redis for Data Protection
+      - Redis__ConnectionString=redis:6379
       # Reverse Proxy - Identity Cluster
       - ReverseProxy__Clusters__identity-cluster__Destinations__identity-api__Address=http://identity-api:8080
       # Reverse Proxy - Products Cluster
@@ -220,6 +238,8 @@ services:
       identity-api:
         condition: service_healthy
       products-api:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       seq:
         condition: service_healthy

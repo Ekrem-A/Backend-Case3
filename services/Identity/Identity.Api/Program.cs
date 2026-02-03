@@ -4,13 +4,14 @@ using Identity.Application.Services;
 using Identity.Domain.Entities;
 using Identity.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
-using Serilog.Sinks.Seq;
+using StackExchange.Redis;
 
 // Seq URL - Environment variable veya default
 var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL") ?? "http://localhost:5341";
@@ -64,10 +65,27 @@ try
     builder.Services.AddDbContext<ApplicationDbContext>(options =>
         options.UseSqlServer(connectionString));
 
+    // Redis Data Protection - Container restart'larında key'lerin korunması için
+    var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString");
+    if (!string.IsNullOrEmpty(redisConnectionString))
+    {
+        var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+        builder.Services.AddDataProtection()
+            .SetApplicationName("Backend-Services")
+            .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys");
+        
+        Log.Information("Data Protection configured with Redis persistence");
+    }
+
     //  Health Checks - Veritabanı ve servis sağlık kontrolü
-    builder.Services.AddHealthChecks()
+    var healthChecksBuilder = builder.Services.AddHealthChecks()
         .AddSqlServer(connectionString!, name: "database", tags: new[] { "db", "sql" })
         .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), tags: new[] { "live" });
+
+    if (!string.IsNullOrEmpty(redisConnectionString))
+    {
+        healthChecksBuilder.AddRedis(redisConnectionString, name: "redis", tags: new[] { "cache" });
+    }
 
     // Configure Identity
     builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
