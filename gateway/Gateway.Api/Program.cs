@@ -1,7 +1,9 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Gateway.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
@@ -64,6 +66,86 @@ try
         
         Log.Information("Data Protection configured with Redis persistence");
     }
+
+    // Rate Limiting Configuration
+    builder.Services.AddRateLimiter(options =>
+    {
+        // Global rate limit rejection response
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.OnRejected = async (context, cancellationToken) =>
+        {
+            context.HttpContext.Response.ContentType = "application/json";
+            
+            var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfterValue)
+                ? retryAfterValue.TotalSeconds
+                : 60;
+
+            context.HttpContext.Response.Headers.RetryAfter = retryAfter.ToString();
+
+            Log.Warning("Rate limit exceeded for {ClientIP} on {Path}",
+                context.HttpContext.Connection.RemoteIpAddress,
+                context.HttpContext.Request.Path);
+
+            await context.HttpContext.Response.WriteAsJsonAsync(new
+            {
+                error = "Too Many Requests",
+                message = "Rate limit exceeded. Please try again later.",
+                retryAfterSeconds = retryAfter
+            }, cancellationToken);
+        };
+
+        // Fixed Window - Genel API istekleri için (100 istek / dakika)
+        options.AddFixedWindowLimiter("fixed", opt =>
+        {
+            opt.PermitLimit = 100;
+            opt.Window = TimeSpan.FromMinutes(1);
+            opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+            opt.QueueLimit = 10;
+        });
+
+        // Sliding Window - Auth endpoint'leri için (20 istek / dakika)
+        options.AddSlidingWindowLimiter("auth", opt =>
+        {
+            opt.PermitLimit = 20;
+            opt.Window = TimeSpan.FromMinutes(1);
+            opt.SegmentsPerWindow = 4;
+            opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+            opt.QueueLimit = 5;
+        });
+
+        // Token Bucket - Yoğun okuma işlemleri için (burst destekli)
+        options.AddTokenBucketLimiter("products", opt =>
+        {
+            opt.TokenLimit = 50;
+            opt.ReplenishmentPeriod = TimeSpan.FromSeconds(10);
+            opt.TokensPerPeriod = 10;
+            opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+            opt.QueueLimit = 10;
+            opt.AutoReplenishment = true;
+        });
+
+        // Concurrency Limiter - Admin işlemleri için (eşzamanlı 5 istek)
+        options.AddConcurrencyLimiter("admin", opt =>
+        {
+            opt.PermitLimit = 5;
+            opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+            opt.QueueLimit = 3;
+        });
+
+        // IP bazlı global limiter
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        {
+            var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            
+            return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 200,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 20
+            });
+        });
+    });
 
     // Configure JWT Authentication
     var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -149,10 +231,13 @@ try
 
     app.UseCors("AllowAll");
 
+    // Rate Limiting Middleware - CORS'tan sonra, Auth'tan önce
+    app.UseRateLimiter();
+
     app.UseAuthentication();
     app.UseAuthorization();
 
-    // Health Checks endpoint'leri
+    // Health Checks endpoint'leri (rate limit dışında)
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
         Predicate = _ => true,
@@ -174,24 +259,45 @@ try
             });
             await context.Response.WriteAsync(result);
         }
-    });
+    }).DisableRateLimiting();
 
     app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
         Predicate = check => check.Tags.Contains("live")
-    });
+    }).DisableRateLimiting();
 
     app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
         Predicate = check => check.Tags.Contains("ready")
-    });
+    }).DisableRateLimiting();
 
-    // Map YARP reverse proxy
-    app.MapReverseProxy();
+    // Map YARP reverse proxy with rate limiting
+    app.MapReverseProxy(proxyPipeline =>
+    {
+        proxyPipeline.Use(async (context, next) =>
+        {
+            var path = context.Request.Path.Value?.ToLower() ?? "";
+            
+            // Endpoint'e göre rate limit policy seç
+            string? rateLimitPolicy = path switch
+            {
+                var p when p.Contains("/api/auth/") => "auth",
+                var p when p.Contains("/api/admin/") => "admin",
+                var p when p.Contains("/api/products") => "products",
+                var p when p.Contains("/api/categories") => "products",
+                _ => "fixed"
+            };
+
+            // Rate limit header ekle (debugging için)
+            context.Response.Headers["X-RateLimit-Policy"] = rateLimitPolicy;
+            
+            await next();
+        });
+    });
 
     // Disposability - Graceful shutdown
     var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-    lifetime.ApplicationStarted.Register(() => Log.Information("Gateway.Api started - routing requests to microservices"));
+    lifetime.ApplicationStarted.Register(() => Log.Information("Gateway.Api started - routing requests to microservices with rate limiting enabled"));
     lifetime.ApplicationStopping.Register(() => Log.Information("Gateway.Api is shutting down..."));
     lifetime.ApplicationStopped.Register(() => Log.Information("Gateway.Api has stopped"));
 

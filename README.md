@@ -372,6 +372,40 @@ Authorization: Bearer {token}
 - ✅ API Gateway ile Merkezi Kimlik Doğrulama
 - ✅ Non-root Docker kullanıcısı
 - ✅ Input Validation (FluentValidation)
+- ✅ **Rate Limiting** (IP bazlı, endpoint bazlı)
+
+## 🚦 Rate Limiting
+
+API Gateway'de .NET 8 yerleşik Rate Limiting middleware'i kullanılmaktadır.
+
+### Rate Limit Politikaları
+
+| Politika | Algoritma | Limit | Pencere | Kullanım |
+|----------|-----------|-------|---------|----------|
+| `global` | Fixed Window | 200 istek/IP | 1 dakika | Tüm istekler |
+| `fixed` | Fixed Window | 100 istek | 1 dakika | Genel API |
+| `auth` | Sliding Window | 20 istek | 1 dakika | Login, Register |
+| `products` | Token Bucket | 50 token (10/10sn) | - | Ürün endpoint'leri |
+| `admin` | Concurrency | 5 eşzamanlı | - | Admin işlemleri |
+
+### Rate Limit Response
+
+Limit aşıldığında `429 Too Many Requests` döner:
+
+```json
+{
+  "error": "Too Many Requests",
+  "message": "Rate limit exceeded. Please try again later.",
+  "retryAfterSeconds": 60
+}
+```
+
+### Response Headers
+
+```
+X-RateLimit-Policy: auth
+Retry-After: 60
+```
 
 ## 📊 CQRS Pattern
 
