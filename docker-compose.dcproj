@@ -12,5 +12,23 @@
     </None>
     <None Include="docker-compose.yml" />
     <None Include=".dockerignore" />
+    <None Include="k8s\configmap.yaml" />
+    <None Include="k8s\infrastructure\kafka.yaml" />
+    <None Include="k8s\infrastructure\redis.yaml" />
+    <None Include="k8s\infrastructure\seq.yaml" />
+    <None Include="k8s\infrastructure\sqlserver.yaml" />
+    <None Include="k8s\ingress.yaml" />
+    <None Include="k8s\namespace.yaml" />
+    <None Include="k8s\network-policies.yaml" />
+    <None Include="k8s\pod-disruption-budgets.yaml" />
+    <None Include="k8s\README.md" />
+    <None Include="k8s\secrets.yaml" />
+    <None Include="k8s\services\gateway-api.yaml" />
+    <None Include="k8s\services\identity-api.yaml" />
+    <None Include="k8s\services\products-api.yaml" />
+    <None Include="scripts\k8s-deploy-local.ps1" />
+    <None Include="scripts\k8s-deploy.ps1" />
+    <None Include="scripts\k8s-deploy.sh" />
+    <None Include="scripts\test-api.ps1" />
   </ItemGroup>
 </Project>

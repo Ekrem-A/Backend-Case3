@@ -1,0 +1,106 @@
+# Products API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: products-api
+  namespace: backend-services
+  labels:
+    app: products-api
+    version: v1
+spec:
+  replicas: 1  # Local development için 1 replica
+  selector:
+    matchLabels:
+      app: products-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: products-api
+        version: v1
+    spec:
+      containers:
+        - name: products-api
+          image: backend-products-api:latest
+          imagePullPolicy: Never  # Local image kullan
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+            - name: ASPNETCORE_URLS
+              value: "http://+:8080"
+            - name: ConnectionStrings__DefaultConnection
+              value: "Server=sqlserver-service;Database=ProductsDb;User Id=sa;Password=Ekoo@3003;TrustServerCertificate=True"
+            - name: JwtSettings__SecretKey
+              value: "ahfgkmcnhfgyruioplksgerwqhnvbcgr1234567890"
+            - name: JwtSettings__Issuer
+              value: "IdentityApi"
+            - name: JwtSettings__Audience
+              value: "BackendServices"
+            - name: Redis__Enabled
+              value: "true"
+            - name: Redis__ConnectionString
+              value: "redis-service:6379"
+            - name: Kafka__Enabled
+              value: "true"
+            - name: Kafka__BootstrapServers
+              value: "kafka-service:9092"
+            - name: Kafka__ProductEventsTopic
+              value: "product-events"
+            - name: Kafka__GroupId
+              value: "products-service"
+            - name: SEQ_URL
+              value: "http://seq-service.backend-services.svc.cluster.local:5341"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          # Startup probe - uzun süre ver
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30  # 5 dakika timeout
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: products-api-service
+  namespace: backend-services
+  labels:
+    app: products-api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
+  selector:
+    app: products-api

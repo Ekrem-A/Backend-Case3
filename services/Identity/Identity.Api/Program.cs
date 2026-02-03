@@ -13,11 +13,11 @@ using Serilog;
 using Serilog.Events;
 using StackExchange.Redis;
 
-// Seq URL - Environment variable veya default
-var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL") ?? "http://localhost:5341";
+// Seq URL - Environment variable (Docker: http://seq:80, K8s: http://seq-service:5341)
+var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL");
 
-// Logs - Yapılandırılmış loglama için Serilog (Seq entegrasyonu ile)
-Log.Logger = new LoggerConfiguration()
+// Serilog yapılandırması - Console her zaman, Seq opsiyonel
+var loggerConfig = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
@@ -27,9 +27,20 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithMachineName()
     .Enrich.WithProperty("ServiceName", "Identity.Api")
     .Enrich.WithProperty("ServiceVersion", "1.0.0")
-    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
-    .WriteTo.Seq(seqUrl)
-    .CreateBootstrapLogger();
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}\n");
+
+// Seq URL geçerliyse ekle
+if (!string.IsNullOrWhiteSpace(seqUrl) && Uri.TryCreate(seqUrl, UriKind.Absolute, out var seqUri))
+{
+    loggerConfig.WriteTo.Seq(seqUrl);
+    Console.WriteLine($"[Identity.Api] Seq logging enabled: {seqUrl}");
+}
+else
+{
+    Console.WriteLine($"[Identity.Api] Seq logging disabled. SEQ_URL value: '{seqUrl ?? "null"}'");
+}
+
+Log.Logger = loggerConfig.CreateBootstrapLogger();
 
 try
 {
@@ -37,24 +48,30 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    //  Logs - Serilog entegrasyonu (Seq merkezi log toplama ile)
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .MinimumLevel.Information()
-        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-        .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
-        .MinimumLevel.Override("System", LogEventLevel.Warning)
-        .Enrich.FromLogContext()
-        .Enrich.WithEnvironmentName()
-        .Enrich.WithMachineName()
-        .Enrich.WithProperty("ServiceName", "Identity.Api")
-        .Enrich.WithProperty("ServiceVersion", "1.0.0")
-        .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
-        .WriteTo.Seq(seqUrl));
+    // Serilog Host entegrasyonu - ReadFrom.Configuration KALDIRILDI (appsettings'ten yanlış URL okumayı önler)
+    builder.Host.UseSerilog((context, services, configuration) =>
+    {
+        configuration
+            .MinimumLevel.Information()
+            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+            .MinimumLevel.Override("System", LogEventLevel.Warning)
+            .Enrich.FromLogContext()
+            .Enrich.WithEnvironmentName()
+            .Enrich.WithMachineName()
+            .Enrich.WithProperty("ServiceName", "Identity.Api")
+            .Enrich.WithProperty("ServiceVersion", "1.0.0")
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}\n");
 
-    //  Config - Environment variables desteği
+        // Seq URL geçerliyse ekle
+        if (!string.IsNullOrWhiteSpace(seqUrl) && Uri.TryCreate(seqUrl, UriKind.Absolute, out _))
+        {
+            configuration.WriteTo.Seq(seqUrl);
+        }
+    });
+
+    // Config - Environment variables desteği
     builder.Configuration
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
         .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
@@ -65,22 +82,33 @@ try
     builder.Services.AddDbContext<ApplicationDbContext>(options =>
         options.UseSqlServer(connectionString));
 
-    // Redis Data Protection - Container restart'larında key'lerin korunması için
+    // Redis Data Protection - opsiyonel, hata toleranslı
     var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString");
     if (!string.IsNullOrEmpty(redisConnectionString))
     {
-        var redis = ConnectionMultiplexer.Connect(redisConnectionString);
-        builder.Services.AddDataProtection()
-            .SetApplicationName("Backend-Services")
-            .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys");
-        
-        Log.Information("Data Protection configured with Redis persistence");
+        try
+        {
+            var redis = ConnectionMultiplexer.Connect(redisConnectionString + ",abortConnect=false,connectTimeout=5000");
+            builder.Services.AddDataProtection()
+                .SetApplicationName("Backend-Services")
+                .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys");
+            
+            Log.Information("Data Protection configured with Redis persistence");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Redis connection failed for Data Protection, using in-memory keys");
+        }
     }
 
-    //  Health Checks - Veritabanı ve servis sağlık kontrolü
+    // Health Checks
     var healthChecksBuilder = builder.Services.AddHealthChecks()
-        .AddSqlServer(connectionString!, name: "database", tags: new[] { "db", "sql" })
         .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), tags: new[] { "live" });
+
+    if (!string.IsNullOrEmpty(connectionString))
+    {
+        healthChecksBuilder.AddSqlServer(connectionString, name: "database", tags: new[] { "db", "sql", "ready" });
+    }
 
     if (!string.IsNullOrEmpty(redisConnectionString))
     {
@@ -90,28 +118,22 @@ try
     // Configure Identity
     builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
-        // Password settings
         options.Password.RequireDigit = true;
         options.Password.RequireLowercase = true;
         options.Password.RequireUppercase = true;
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequiredLength = 6;
-
-        // User settings
         options.User.RequireUniqueEmail = true;
-
-        // Lockout settings
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
         options.Lockout.MaxFailedAccessAttempts = 5;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
-    //  Config - JWT ayarları environment'tan
+    // JWT ayarları
     var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
     builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 
-    // Configure JWT Authentication
     builder.Services.AddAuthentication(options =>
     {
         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -132,7 +154,6 @@ try
         };
     });
 
-    // Register Services
     builder.Services.AddScoped<IAuthService, AuthService>();
 
     builder.Services.AddControllers();
@@ -143,12 +164,12 @@ try
         {
             Title = "Identity API",
             Version = "v1",
-            Description = "Authentication and Authorization API with JWT - 12-Factor App"
+            Description = "Authentication and Authorization API with JWT"
         });
 
         c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
         {
-            Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
+            Description = "JWT Authorization header using the Bearer scheme.",
             Name = "Authorization",
             In = ParameterLocation.Header,
             Type = SecuritySchemeType.ApiKey,
@@ -173,13 +194,12 @@ try
 
     var app = builder.Build();
 
-    // Seed database with roles and admin user
+    // Seed database
     using (var scope = app.Services.CreateScope())
     {
-        var services = scope.ServiceProvider;
         try
         {
-            await Identity.Infrastructure.Data.DbInitializer.SeedAsync(services);
+            await Identity.Infrastructure.Data.DbInitializer.SeedAsync(scope.ServiceProvider);
             Log.Information("Database seeding completed successfully");
         }
         catch (Exception ex)
@@ -188,25 +208,19 @@ try
         }
     }
 
-    // Configure the HTTP request pipeline.
-    if (app.Environment.IsDevelopment())
-    {
-        app.UseSwagger();
-        app.UseSwaggerUI();
-    }
+    // Swagger
+    app.UseSwagger();
+    app.UseSwaggerUI();
 
-    //  Logs - HTTP request logging
     app.UseSerilogRequestLogging(options =>
     {
         options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
     });
 
-    app.UseHttpsRedirection();
-
     app.UseAuthentication();
     app.UseAuthorization();
 
-    //  Health Checks endpoint'leri
+    // Health Checks
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
         Predicate = _ => true,
@@ -236,16 +250,14 @@ try
 
     app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
-        Predicate = check => check.Tags.Contains("db")
+        Predicate = check => check.Tags.Contains("ready") || check.Tags.Contains("db")
     });
 
     app.MapControllers();
 
-    //  Disposability - Graceful shutdown
     var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
     lifetime.ApplicationStarted.Register(() => Log.Information("Identity.Api started successfully"));
     lifetime.ApplicationStopping.Register(() => Log.Information("Identity.Api is shutting down..."));
-    lifetime.ApplicationStopped.Register(() => Log.Information("Identity.Api has stopped"));
 
     await app.RunAsync();
 }
@@ -255,7 +267,6 @@ catch (Exception ex)
 }
 finally
 {
-    //  Disposability - Kaynakları temizle
     Log.Information("Identity.Api shutdown complete");
     await Log.CloseAndFlushAsync();
 }

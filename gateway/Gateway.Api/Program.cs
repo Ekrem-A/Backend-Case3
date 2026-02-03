@@ -9,11 +9,11 @@ using Serilog;
 using Serilog.Events;
 using StackExchange.Redis;
 
-// Seq URL - Environment variable veya default
-var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL") ?? "http://localhost:5341";
+// Seq URL - Environment variable
+var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL");
 
-//Yapılandırılmış loglama için Serilog (Seq entegrasyonu ile)
-Log.Logger = new LoggerConfiguration()
+// Serilog yapılandırması
+var loggerConfig = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("System", LogEventLevel.Warning)
@@ -22,9 +22,19 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithMachineName()
     .Enrich.WithProperty("ServiceName", "Gateway.Api")
     .Enrich.WithProperty("ServiceVersion", "1.0.0")
-    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
-    .WriteTo.Seq(seqUrl)
-    .CreateBootstrapLogger();
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}");
+
+if (!string.IsNullOrWhiteSpace(seqUrl) && Uri.TryCreate(seqUrl, UriKind.Absolute, out _))
+{
+    loggerConfig.WriteTo.Seq(seqUrl);
+    Console.WriteLine($"[Gateway.Api] Seq logging enabled: {seqUrl}");
+}
+else
+{
+    Console.WriteLine($"[Gateway.Api] Seq logging disabled. SEQ_URL: '{seqUrl ?? "null"}'");
+}
+
+Log.Logger = loggerConfig.CreateBootstrapLogger();
 
 try
 {
@@ -32,45 +42,55 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-   // Logs - Serilog entegrasyonu (Seq merkezi log toplama ile)
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .MinimumLevel.Information()
-        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-        .MinimumLevel.Override("Yarp", LogEventLevel.Information)
-        .MinimumLevel.Override("System", LogEventLevel.Warning)
-        .Enrich.FromLogContext()
-        .Enrich.WithEnvironmentName()
-        .Enrich.WithMachineName()
-        .Enrich.WithProperty("ServiceName", "Gateway.Api")
-        .Enrich.WithProperty("ServiceVersion", "1.0.0")
-        .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
-        .WriteTo.Seq(seqUrl));
+    // Serilog Host entegrasyonu
+    builder.Host.UseSerilog((context, services, configuration) =>
+    {
+        configuration
+            .MinimumLevel.Information()
+            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+            .MinimumLevel.Override("Yarp", LogEventLevel.Information)
+            .MinimumLevel.Override("System", LogEventLevel.Warning)
+            .Enrich.FromLogContext()
+            .Enrich.WithEnvironmentName()
+            .Enrich.WithMachineName()
+            .Enrich.WithProperty("ServiceName", "Gateway.Api")
+            .Enrich.WithProperty("ServiceVersion", "1.0.0")
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}");
 
-    //Environment variables desteği
+        if (!string.IsNullOrWhiteSpace(seqUrl) && Uri.TryCreate(seqUrl, UriKind.Absolute, out _))
+        {
+            configuration.WriteTo.Seq(seqUrl);
+        }
+    });
+
     builder.Configuration
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
         .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
         .AddEnvironmentVariables();
 
-    // Redis Data Protection - Container restart'larında key'lerin korunması için
+    // Redis Data Protection - hata toleranslı
     var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString");
     if (!string.IsNullOrEmpty(redisConnectionString))
     {
-        var redis = ConnectionMultiplexer.Connect(redisConnectionString);
-        builder.Services.AddDataProtection()
-            .SetApplicationName("Backend-Services")
-            .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys");
-        
-        Log.Information("Data Protection configured with Redis persistence");
+        try
+        {
+            var redis = ConnectionMultiplexer.Connect(redisConnectionString + ",abortConnect=false,connectTimeout=5000");
+            builder.Services.AddDataProtection()
+                .SetApplicationName("Backend-Services")
+                .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys");
+            
+            Log.Information("Data Protection configured with Redis persistence");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Redis connection failed, using in-memory data protection");
+        }
     }
 
     // Rate Limiting Configuration
     builder.Services.AddRateLimiter(options =>
     {
-        // Global rate limit rejection response
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
         options.OnRejected = async (context, cancellationToken) =>
         {
@@ -94,7 +114,6 @@ try
             }, cancellationToken);
         };
 
-        // Fixed Window - Genel API istekleri için (100 istek / dakika)
         options.AddFixedWindowLimiter("fixed", opt =>
         {
             opt.PermitLimit = 100;
@@ -103,7 +122,6 @@ try
             opt.QueueLimit = 10;
         });
 
-        // Sliding Window - Auth endpoint'leri için (20 istek / dakika)
         options.AddSlidingWindowLimiter("auth", opt =>
         {
             opt.PermitLimit = 20;
@@ -113,7 +131,6 @@ try
             opt.QueueLimit = 5;
         });
 
-        // Token Bucket - Yoğun okuma işlemleri için (burst destekli)
         options.AddTokenBucketLimiter("products", opt =>
         {
             opt.TokenLimit = 50;
@@ -124,7 +141,6 @@ try
             opt.AutoReplenishment = true;
         });
 
-        // Concurrency Limiter - Admin işlemleri için (eşzamanlı 5 istek)
         options.AddConcurrencyLimiter("admin", opt =>
         {
             opt.PermitLimit = 5;
@@ -132,7 +148,6 @@ try
             opt.QueueLimit = 3;
         });
 
-        // IP bazlı global limiter
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         {
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -147,7 +162,7 @@ try
         });
     });
 
-    // Configure JWT Authentication
+    // JWT Authentication
     var jwtSettings = builder.Configuration.GetSection("JwtSettings");
     var secretKey = jwtSettings["SecretKey"]!;
 
@@ -171,14 +186,9 @@ try
         };
     });
 
-    // Add Authorization Policies
     builder.Services.AddAuthorization(options =>
     {
-        options.AddPolicy("authenticated", policy =>
-        {
-            policy.RequireAuthenticatedUser();
-        });
-
+        options.AddPolicy("authenticated", policy => policy.RequireAuthenticatedUser());
         options.AddPolicy("admin", policy =>
         {
             policy.RequireAuthenticatedUser();
@@ -186,20 +196,15 @@ try
         });
     });
 
-    // Add YARP Reverse Proxy
+    // YARP Reverse Proxy
     builder.Services.AddReverseProxy()
         .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
-    // Health Checks - Gateway sağlık kontrolü
+    // Health Checks
     var healthChecksBuilder = builder.Services.AddHealthChecks()
         .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Gateway is healthy"), tags: new[] { "live" });
 
-    if (!string.IsNullOrEmpty(redisConnectionString))
-    {
-        healthChecksBuilder.AddRedis(redisConnectionString, name: "redis", tags: new[] { "cache" });
-    }
-
-    // Add CORS
+    // CORS
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowAll", policy =>
@@ -212,10 +217,8 @@ try
 
     var app = builder.Build();
 
-    // CorrelationId middleware - tüm isteklere benzersiz ID atar
     app.UseCorrelationId();
 
-    // Logs - HTTP request logging (CorrelationId ile zenginleştirilmiş)
     app.UseSerilogRequestLogging(options =>
     {
         options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
@@ -223,21 +226,15 @@ try
         {
             diagnosticContext.Set("CorrelationId", httpContext.Items["CorrelationId"]?.ToString() ?? "N/A");
             diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? "N/A");
-            diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
         };
     });
 
-    app.UseHttpsRedirection();
-
     app.UseCors("AllowAll");
-
-    // Rate Limiting Middleware - CORS'tan sonra, Auth'tan önce
     app.UseRateLimiter();
-
     app.UseAuthentication();
     app.UseAuthorization();
 
-    // Health Checks endpoint'leri (rate limit dışında)
+    // Health Checks
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
         Predicate = _ => true,
@@ -252,7 +249,6 @@ try
                 {
                     name = e.Key,
                     status = e.Value.Status.ToString(),
-                    description = e.Value.Description,
                     duration = e.Value.Duration.TotalMilliseconds
                 }),
                 totalDuration = report.TotalDuration.TotalMilliseconds
@@ -271,35 +267,12 @@ try
         Predicate = check => check.Tags.Contains("ready")
     }).DisableRateLimiting();
 
-    // Map YARP reverse proxy with rate limiting
-    app.MapReverseProxy(proxyPipeline =>
-    {
-        proxyPipeline.Use(async (context, next) =>
-        {
-            var path = context.Request.Path.Value?.ToLower() ?? "";
-            
-            // Endpoint'e göre rate limit policy seç
-            string? rateLimitPolicy = path switch
-            {
-                var p when p.Contains("/api/auth/") => "auth",
-                var p when p.Contains("/api/admin/") => "admin",
-                var p when p.Contains("/api/products") => "products",
-                var p when p.Contains("/api/categories") => "products",
-                _ => "fixed"
-            };
+    // YARP Reverse Proxy
+    app.MapReverseProxy();
 
-            // Rate limit header ekle (debugging için)
-            context.Response.Headers["X-RateLimit-Policy"] = rateLimitPolicy;
-            
-            await next();
-        });
-    });
-
-    // Disposability - Graceful shutdown
     var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-    lifetime.ApplicationStarted.Register(() => Log.Information("Gateway.Api started - routing requests to microservices with rate limiting enabled"));
+    lifetime.ApplicationStarted.Register(() => Log.Information("Gateway.Api started successfully"));
     lifetime.ApplicationStopping.Register(() => Log.Information("Gateway.Api is shutting down..."));
-    lifetime.ApplicationStopped.Register(() => Log.Information("Gateway.Api has stopped"));
 
     await app.RunAsync();
 }
@@ -309,7 +282,6 @@ catch (Exception ex)
 }
 finally
 {
-    // Disposability - Kaynakları temizle
     Log.Information("Gateway.Api shutdown complete");
     await Log.CloseAndFlushAsync();
 }

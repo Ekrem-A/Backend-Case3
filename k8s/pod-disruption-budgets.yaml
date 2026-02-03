@@ -1,0 +1,34 @@
+# Pod Disruption Budgets - High Availability için
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway-api-pdb
+  namespace: backend-services
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gateway-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: identity-api-pdb
+  namespace: backend-services
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: identity-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: products-api-pdb
+  namespace: backend-services
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: products-api

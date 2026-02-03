@@ -8,7 +8,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Products.Application.Behaviors;
 using Products.Application.Commands;
-using Products.Application.Handlers;
 using Products.Application.Interfaces;
 using Products.Domain.Interfaces;
 using Products.Infrastructure.Caching;
@@ -19,11 +18,11 @@ using Serilog;
 using Serilog.Events;
 using StackExchange.Redis;
 
-// Seq URL - Environment variable veya default
-var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL") ?? "http://localhost:5341";
+// Seq URL - Environment variable
+var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL");
 
-// Serilog yapılandırması (Seq entegrasyonu ile)
-Log.Logger = new LoggerConfiguration()
+// Serilog yapılandırması
+var loggerConfig = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
@@ -33,9 +32,19 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithMachineName()
     .Enrich.WithProperty("ServiceName", "Products.Api")
     .Enrich.WithProperty("ServiceVersion", "1.0.0")
-    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
-    .WriteTo.Seq(seqUrl)
-    .CreateBootstrapLogger();
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}");
+
+if (!string.IsNullOrWhiteSpace(seqUrl) && Uri.TryCreate(seqUrl, UriKind.Absolute, out _))
+{
+    loggerConfig.WriteTo.Seq(seqUrl);
+    Console.WriteLine($"[Products.Api] Seq logging enabled: {seqUrl}");
+}
+else
+{
+    Console.WriteLine($"[Products.Api] Seq logging disabled. SEQ_URL: '{seqUrl ?? "null"}'");
+}
+
+Log.Logger = loggerConfig.CreateBootstrapLogger();
 
 try
 {
@@ -43,24 +52,28 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    // Serilog entegrasyonu (Seq merkezi log toplama ile)
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .MinimumLevel.Information()
-        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-        .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
-        .MinimumLevel.Override("System", LogEventLevel.Warning)
-        .Enrich.FromLogContext()
-        .Enrich.WithEnvironmentName()
-        .Enrich.WithMachineName()
-        .Enrich.WithProperty("ServiceName", "Products.Api")
-        .Enrich.WithProperty("ServiceVersion", "1.0.0")
-        .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}")
-        .WriteTo.Seq(seqUrl));
+    // Serilog Host entegrasyonu
+    builder.Host.UseSerilog((context, services, configuration) =>
+    {
+        configuration
+            .MinimumLevel.Information()
+            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+            .MinimumLevel.Override("System", LogEventLevel.Warning)
+            .Enrich.FromLogContext()
+            .Enrich.WithEnvironmentName()
+            .Enrich.WithMachineName()
+            .Enrich.WithProperty("ServiceName", "Products.Api")
+            .Enrich.WithProperty("ServiceVersion", "1.0.0")
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] {Message:lj}{NewLine}{Exception}");
 
-    // Configuration
+        if (!string.IsNullOrWhiteSpace(seqUrl) && Uri.TryCreate(seqUrl, UriKind.Absolute, out _))
+        {
+            configuration.WriteTo.Seq(seqUrl);
+        }
+    });
+
     builder.Configuration
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
         .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
@@ -71,32 +84,38 @@ try
     builder.Services.AddDbContext<ProductsDbContext>(options =>
         options.UseSqlServer(connectionString));
 
-    // Redis Cache
+    // Redis Cache - hata toleranslı
     var redisEnabled = builder.Configuration.GetValue<bool>("Redis:Enabled");
     var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString");
-    IConnectionMultiplexer? redisConnection = null;
 
     if (redisEnabled && !string.IsNullOrEmpty(redisConnectionString))
     {
-        Log.Information("Redis cache enabled, connecting to: {RedisConnection}", redisConnectionString);
-        
-        redisConnection = ConnectionMultiplexer.Connect(redisConnectionString);
-        builder.Services.AddSingleton<IConnectionMultiplexer>(redisConnection);
-
-        builder.Services.AddStackExchangeRedisCache(options =>
+        try
         {
-            options.Configuration = redisConnectionString;
-            options.InstanceName = "Products:";
-        });
+            Log.Information("Redis cache enabled, connecting to: {RedisConnection}", redisConnectionString);
+            
+            var redisConnection = ConnectionMultiplexer.Connect(redisConnectionString + ",abortConnect=false,connectTimeout=5000");
+            builder.Services.AddSingleton<IConnectionMultiplexer>(redisConnection);
 
-        builder.Services.AddSingleton<ICacheService, RedisCacheService>();
+            builder.Services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = redisConnectionString;
+                options.InstanceName = "Products:";
+            });
 
-        // Data Protection - Redis'te key saklama (container restart'larında kaybolmaması için)
-        builder.Services.AddDataProtection()
-            .SetApplicationName("Backend-Services")
-            .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys");
-        
-        Log.Information("Data Protection configured with Redis persistence");
+            builder.Services.AddSingleton<ICacheService, RedisCacheService>();
+
+            builder.Services.AddDataProtection()
+                .SetApplicationName("Backend-Services")
+                .PersistKeysToStackExchangeRedis(redisConnection, "DataProtection-Keys");
+            
+            Log.Information("Redis cache and Data Protection configured successfully");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Redis connection failed, using NullCacheService");
+            builder.Services.AddSingleton<ICacheService, NullCacheService>();
+        }
     }
     else
     {
@@ -108,9 +127,9 @@ try
     var healthChecksBuilder = builder.Services.AddHealthChecks()
         .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), tags: new[] { "live" });
 
-    if (redisEnabled && !string.IsNullOrEmpty(redisConnectionString))
+    if (!string.IsNullOrEmpty(connectionString))
     {
-        healthChecksBuilder.AddRedis(redisConnectionString, name: "redis", tags: new[] { "db", "cache" });
+        healthChecksBuilder.AddSqlServer(connectionString, tags: new[] { "db", "ready" });
     }
 
     // MediatR
@@ -163,7 +182,6 @@ try
     });
 
     builder.Services.AddAuthorization();
-
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(c =>
@@ -172,7 +190,7 @@ try
         {
             Title = "Products API",
             Version = "v1",
-            Description = "Bilgisayar Bileşenleri Ürün Yönetimi API - CQRS Pattern with Redis Cache"
+            Description = "Product Management API - CQRS Pattern"
         });
 
         c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -224,13 +242,7 @@ try
         c.RoutePrefix = "swagger";
     });
 
-    app.UseSerilogRequestLogging(options =>
-    {
-        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
-    });
-
-    app.UseHttpsRedirection();
-
+    app.UseSerilogRequestLogging();
     app.UseAuthentication();
     app.UseAuthorization();
 
@@ -248,7 +260,6 @@ try
                 {
                     name = e.Key,
                     status = e.Value.Status.ToString(),
-                    description = e.Value.Description,
                     duration = e.Value.Duration.TotalMilliseconds
                 }),
                 totalDuration = report.TotalDuration.TotalMilliseconds
@@ -264,16 +275,14 @@ try
 
     app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
-        Predicate = check => check.Tags.Contains("db")
+        Predicate = check => check.Tags.Contains("ready") || check.Tags.Contains("db")
     });
 
     app.MapControllers();
 
-    // Graceful shutdown
     var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
     lifetime.ApplicationStarted.Register(() => Log.Information("Products.Api started successfully"));
     lifetime.ApplicationStopping.Register(() => Log.Information("Products.Api is shutting down..."));
-    lifetime.ApplicationStopped.Register(() => Log.Information("Products.Api has stopped"));
 
     await app.RunAsync();
 }
