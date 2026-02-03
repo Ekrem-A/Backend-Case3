@@ -29,6 +29,8 @@
     <None Include="scripts\k8s-deploy-local.ps1" />
     <None Include="scripts\k8s-deploy.ps1" />
     <None Include="scripts\k8s-deploy.sh" />
+    <None Include="scripts\setup-https.ps1" />
+    <None Include="scripts\setup-https.sh" />
     <None Include="scripts\test-api.ps1" />
   </ItemGroup>
 </Project>

@@ -27,7 +27,7 @@ spec:
               name: http
           env:
             - name: ASPNETCORE_ENVIRONMENT
-              value: "Development"
+              value: "Production"
             - name: ASPNETCORE_URLS
               value: "http://+:8080"
             - name: JwtSettings__SecretKey

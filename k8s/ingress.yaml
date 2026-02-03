@@ -1,5 +1,5 @@
 # Ingress Controller Configuration (NGINX)
-# TLS ile dýþ dünyaya açýlým
+# Local Development için yapýlandýrma
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -8,9 +8,7 @@ metadata:
   labels:
     app.kubernetes.io/name: backend-ingress
   annotations:
-    # NGINX Ingress Controller
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/use-regex: "true"
     # Rate Limiting
     nginx.ingress.kubernetes.io/limit-rps: "100"
@@ -26,19 +24,12 @@ metadata:
     nginx.ingress.kubernetes.io/cors-allow-origin: "*"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
     nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,X-Correlation-ID"
-    # TLS with cert-manager (Let's Encrypt)
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   ingressClassName: nginx
-  tls:
-    - hosts:
-        - api.eko.com
-      secretName: backend-tls-secret
   rules:
-    - host: api.eko.com
-      http:
+    # Tüm trafik Gateway API'ye yönlendirilir
+    - http:
         paths:
-          # Tüm trafik Gateway API'ye yönlendirilir
           - path: /
             pathType: Prefix
             backend:
@@ -47,22 +38,18 @@ spec:
                 port:
                   number: 80
 ---
-# Seq Dashboard için ayrý Ingress (opsiyonel, internal)
+# Seq Dashboard Ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: seq-ingress
   namespace: backend-services
   annotations:
-    kubernetes.io/ingress.class: nginx
-    # Basic Auth (internal access için)
-    nginx.ingress.kubernetes.io/auth-type: basic
-    nginx.ingress.kubernetes.io/auth-secret: seq-basic-auth
-    nginx.ingress.kubernetes.io/auth-realm: "Seq Log Server"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   ingressClassName: nginx
   rules:
-    - host: logs.eko.com
+    - host: seq.localhost
       http:
         paths:
           - path: /
@@ -70,5 +57,49 @@ spec:
             backend:
               service:
                 name: seq-service
+                port:
+                  number: 80
+---
+# Identity API Direct Access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: identity-ingress
+  namespace: backend-services
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: identity.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: identity-api-service
+                port:
+                  number: 80
+---
+# Products API Direct Access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: products-ingress
+  namespace: backend-services
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: products.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: products-api-service
                 port:
                   number: 80

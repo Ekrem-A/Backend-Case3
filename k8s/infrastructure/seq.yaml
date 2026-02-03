@@ -57,13 +57,15 @@ metadata:
   name: seq-service
   namespace: backend-services
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
     - port: 80
       targetPort: 80
+      nodePort: 30080
       name: web
     - port: 5341
       targetPort: 5341
+      nodePort: 30341
       name: ingestion
   selector:
     app: seq

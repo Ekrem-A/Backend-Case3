@@ -1,247 +1,84 @@
 # 12-Factor App: Docker Compose
 # Tüm servisleri tek bir komutla başlatma
 
+version: '3.8'
+
 services:
-  # SQL Server Database
+  # SQL Server Database (12-Factor: Destek Servisleri)
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: backend-sqlserver
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=Ekoo@3003
+      - SA_PASSWORD=${SA_PASSWORD:-YourStrong@Passw0rd}
       - MSSQL_PID=Developer
     ports:
       - "1433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
     healthcheck:
-      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Ekoo@3003" -C -Q "SELECT 1" || exit 1
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -Q "SELECT 1" || exit 1
       interval: 10s
-      timeout: 5s
+      timeout: 3s
       retries: 10
-      start_period: 30s
-    networks:
-      - backend-network
-
-  # Redis Cache
-  redis:
-    image: redis:7-alpine
-    container_name: backend-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: redis-cli ping | grep PONG || exit 1
-      interval: 10s
-      timeout: 5s
-      retries: 5
       start_period: 10s
     networks:
       - backend-network
 
-  # Redis Commander (Redis GUI)
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: backend-redis-commander
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-    ports:
-      - "8082:8081"
-    depends_on:
-      - redis
-    networks:
-      - backend-network
-
-  # Zookeeper (Kafka için gerekli)
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: backend-zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-    networks:
-      - backend-network
-
-  # Apache Kafka
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: backend-kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-      - "29092:29092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    healthcheck:
-      test: kafka-topics --bootstrap-server localhost:9092 --list || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    networks:
-      - backend-network
-
-  # Kafka UI (Opsiyonel - Kafka yönetim arayüzü)
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: backend-kafka-ui
-    depends_on:
-      - kafka
-    ports:
-      - "8081:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: backend-cluster
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-    networks:
-      - backend-network
-
-  # Seq Log Server (Merkezi Log Toplama)
-  seq:
-    image: datalust/seq:latest
-    container_name: backend-seq
-    environment:
-      - ACCEPT_EULA=Y
-      - SEQ_FIRSTRUN_ADMINUSERNAME=admin
-      - SEQ_FIRSTRUN_ADMINPASSWORD=admin123
-    ports:
-      - "5341:80"      # Web UI ve API
-      - "5342:5341"    # Ingestion API
-    volumes:
-      - seq_data:/data
-    healthcheck:
-      test: curl -f http://localhost:80/api || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 10s
-    networks:
-      - backend-network
-
-  # Identity API
+  # Identity API (12-Factor: Stateless, Port Bağımsızlığı)
   identity-api:
     build:
       context: .
-      dockerfile: services/Identity/Identity.Api/Dockerfile
+      dockerfile: Identity.Api/Dockerfile
     container_name: backend-identity-api
     environment:
+      # 12-Factor: Config - Environment variables
       - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=IdentityDb;User Id=sa;Password=Ekoo@3003;TrustServerCertificate=True
-      - JwtSettings__SecretKey=ahfgkmcnhfgyruıoplksgerwqhnvbcgr
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=IdentityDb;User Id=sa;Password=${SA_PASSWORD:-YourStrong@Passw0rd};TrustServerCertificate=True
+      - JwtSettings__SecretKey=${JWT_SECRET_KEY:-ahfgkmcnhfgyruıoplksgerwqhnvbcgr}
       - JwtSettings__Issuer=IdentityApi
       - JwtSettings__Audience=BackendServices
       - JwtSettings__AccessTokenExpirationMinutes=15
       - JwtSettings__RefreshTokenExpirationDays=7
-      - Redis__ConnectionString=redis:6379
-      - SEQ_URL=http://seq:80
     ports:
       - "5101:8080"
     depends_on:
       sqlserver:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      seq:
-        condition: service_healthy
     healthcheck:
       test: curl -f http://localhost:8080/health/live || exit 1
       interval: 30s
       timeout: 3s
       retries: 3
-      start_period: 15s
+      start_period: 10s
     networks:
       - backend-network
+    # 12-Factor: Logs - stdout'a yaz
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-  # Products API (CQRS + Kafka + Redis Cache)
-  products-api:
-    build:
-      context: .
-      dockerfile: services/Products/Products.Api/Dockerfile
-    container_name: backend-products-api
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=ProductsDb;User Id=sa;Password=Ekoo@3003;TrustServerCertificate=True
-      - JwtSettings__SecretKey=ahfgkmcnhfgyruıoplksgerwqhnvbcgr
-      - JwtSettings__Issuer=IdentityApi
-      - JwtSettings__Audience=BackendServices
-      - Redis__Enabled=true
-      - Redis__ConnectionString=redis:6379
-      - Kafka__Enabled=true
-      - Kafka__BootstrapServers=kafka:29092
-      - Kafka__ProductEventsTopic=product-events
-      - Kafka__GroupId=products-service
-      - SEQ_URL=http://seq:80
-    ports:
-      - "5102:8080"
-    depends_on:
-      sqlserver:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      seq:
-        condition: service_healthy
-    healthcheck:
-      test: curl -f http://localhost:8080/health/live || exit 1
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 15s
-    networks:
-      - backend-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # API Gateway with YARP
+  # API Gateway with YARP (12-Factor: Destek Servisleri)
   gateway-api:
     build:
       context: .
-      dockerfile: gateway/Gateway.Api/Dockerfile
+      dockerfile: Gateway.Api/Dockerfile
     container_name: backend-gateway-api
     environment:
+      # 12-Factor: Config - Environment variables
       - ASPNETCORE_ENVIRONMENT=Production
-      # JWT Settings
-      - JwtSettings__SecretKey=ahfgkmcnhfgyruıoplksgerwqhnvbcgr
+      - JwtSettings__SecretKey=${JWT_SECRET_KEY:-ahfgkmcnhfgyruıoplksgerwqhnvbcgr}
       - JwtSettings__Issuer=IdentityApi
       - JwtSettings__Audience=BackendServices
-      # Redis for Data Protection
-      - Redis__ConnectionString=redis:6379
-      # Reverse Proxy - Identity Cluster
+      # YARP cluster destinations for Docker network
       - ReverseProxy__Clusters__identity-cluster__Destinations__identity-api__Address=http://identity-api:8080
-      # Reverse Proxy - Products Cluster
       - ReverseProxy__Clusters__products-cluster__Destinations__products-api__Address=http://products-api:8080
-      # Seq Logging
-      - SEQ_URL=http://seq:80
     ports:
       - "5100:8080"
     depends_on:
       identity-api:
-        condition: service_healthy
-      products-api:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      seq:
         condition: service_healthy
     healthcheck:
       test: curl -f http://localhost:8080/health/live || exit 1
@@ -251,6 +88,7 @@ services:
       start_period: 5s
     networks:
       - backend-network
+    # 12-Factor: Logs - stdout'a yaz
     logging:
       driver: "json-file"
       options:
@@ -263,8 +101,4 @@ networks:
 
 volumes:
   sqlserver_data:
-    driver: local
-  redis_data:
-    driver: local
-  seq_data:
     driver: local

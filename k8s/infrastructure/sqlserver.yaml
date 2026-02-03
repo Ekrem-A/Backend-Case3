@@ -74,10 +74,11 @@ metadata:
   labels:
     app: sqlserver
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
     - port: 1433
       targetPort: 1433
+      nodePort: 31433
       name: sql
   selector:
     app: sqlserver
