@@ -1,9 +1,11 @@
 using System.Text;
 using Gateway.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
+using StackExchange.Redis;
 
 // Seq URL - Environment variable veya default
 var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL") ?? "http://localhost:5341";
@@ -51,6 +53,18 @@ try
         .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
         .AddEnvironmentVariables();
 
+    // Redis Data Protection - Container restart'larında key'lerin korunması için
+    var redisConnectionString = builder.Configuration.GetValue<string>("Redis:ConnectionString");
+    if (!string.IsNullOrEmpty(redisConnectionString))
+    {
+        var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+        builder.Services.AddDataProtection()
+            .SetApplicationName("Backend-Services")
+            .PersistKeysToStackExchangeRedis(redis, "DataProtection-Keys");
+        
+        Log.Information("Data Protection configured with Redis persistence");
+    }
+
     // Configure JWT Authentication
     var jwtSettings = builder.Configuration.GetSection("JwtSettings");
     var secretKey = jwtSettings["SecretKey"]!;
@@ -95,10 +109,13 @@ try
         .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
     // Health Checks - Gateway sağlık kontrolü
-    builder.Services.AddHealthChecks()
-        .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Gateway is healthy"), tags: new[] { "live" })
-        .AddUrlGroup(new Uri("http://localhost:5101/health/live"), name: "identity-api", tags: new[] { "ready", "services" })
-        .AddUrlGroup(new Uri("http://localhost:5102/health/live"), name: "products-api", failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded, tags: new[] { "ready", "services" });
+    var healthChecksBuilder = builder.Services.AddHealthChecks()
+        .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Gateway is healthy"), tags: new[] { "live" });
+
+    if (!string.IsNullOrEmpty(redisConnectionString))
+    {
+        healthChecksBuilder.AddRedis(redisConnectionString, name: "redis", tags: new[] { "cache" });
+    }
 
     // Add CORS
     builder.Services.AddCors(options =>
