@@ -1,8 +1,6 @@
 # 12-Factor App: Docker Compose
 # Tüm servisleri tek bir komutla başlatma
 
-version: '3.8'
-
 services:
   # SQL Server Database (12-Factor: Destek Servisleri)
   sqlserver:
@@ -17,7 +15,7 @@ services:
     volumes:
       - sqlserver_data:/var/opt/mssql
     healthcheck:
-      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -Q "SELECT 1" || exit 1
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -C -Q "SELECT 1" || exit 1
       interval: 10s
       timeout: 3s
       retries: 10
@@ -25,11 +23,77 @@ services:
     networks:
       - backend-network
 
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: backend-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend-network
+
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: backend-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - backend-network
+
+  # Kafka Message Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: backend-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - backend-network
+
+  # Kafka UI
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: backend-kafka-ui
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8081:8080"
+    networks:
+      - backend-network
+
   # Identity API (12-Factor: Stateless, Port Bağımsızlığı)
   identity-api:
     build:
       context: .
-      dockerfile: Identity.Api/Dockerfile
+      dockerfile: services/Identity/Identity.Api/Dockerfile
     container_name: backend-identity-api
     environment:
       # 12-Factor: Config - Environment variables
@@ -53,7 +117,45 @@ services:
       start_period: 10s
     networks:
       - backend-network
-    # 12-Factor: Logs - stdout'a yaz
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Products API
+  products-api:
+    build:
+      context: .
+      dockerfile: services/Products/Products.Api/Dockerfile
+    container_name: backend-products-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=ProductsDb;User Id=sa;Password=${SA_PASSWORD:-YourStrong@Passw0rd};TrustServerCertificate=True
+      - Redis__ConnectionString=redis:6379
+      - Redis__Enabled=true
+      - Kafka__BootstrapServers=kafka:9092
+      - Kafka__Enabled=true
+      - JwtSettings__SecretKey=${JWT_SECRET_KEY:-ahfgkmcnhfgyruıoplksgerwqhnvbcgr}
+      - JwtSettings__Issuer=IdentityApi
+      - JwtSettings__Audience=BackendServices
+    ports:
+      - "5102:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: curl -f http://localhost:8080/health/live || exit 1
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - backend-network
     logging:
       driver: "json-file"
       options:
@@ -64,7 +166,7 @@ services:
   gateway-api:
     build:
       context: .
-      dockerfile: Gateway.Api/Dockerfile
+      dockerfile: gateway/Gateway.Api/Dockerfile
     container_name: backend-gateway-api
     environment:
       # 12-Factor: Config - Environment variables
@@ -88,7 +190,6 @@ services:
       start_period: 5s
     networks:
       - backend-network
-    # 12-Factor: Logs - stdout'a yaz
     logging:
       driver: "json-file"
       options:
@@ -101,4 +202,6 @@ networks:
 
 volumes:
   sqlserver_data:
+    driver: local
+  redis_data:
     driver: local

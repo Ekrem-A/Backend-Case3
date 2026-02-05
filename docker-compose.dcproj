@@ -13,6 +13,7 @@
     <None Include="docker-compose.yml" />
     <None Include=".dockerignore" />
     <None Include="k8s\configmap.yaml" />
+    <None Include="k8s\infrastructure\elk-stack.yaml" />
     <None Include="k8s\infrastructure\kafka.yaml" />
     <None Include="k8s\infrastructure\redis.yaml" />
     <None Include="k8s\infrastructure\seq.yaml" />
